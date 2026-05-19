@@ -1,6 +1,6 @@
 fastapi
 uvicorn
-chromadb-client
+chromadb
 pymupdf
 python-docx
 pillow

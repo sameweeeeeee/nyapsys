@@ -1,10 +1,10 @@
-unsloth
-trl
+torch
 transformers
+trl
 peft
 datasets
-boto3
-bitsandbytes
+tokenizers
+google-cloud-storage
 accelerate
-torch
-sentence-transformers
+bitsandbytes
+scipy

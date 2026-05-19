@@ -1,0 +1,31 @@
+name: Deploy Backend to Mac
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH (Tailscale)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.MAC_TAILSCALE_IP }}
+          username: YOUR_MAC_USERNAME
+          key: ${{ secrets.MAC_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -e
+            cd ~/nyapsys
+            git fetch origin main
+            git reset --hard origin/main
+            pip3.11 install -r backend/requirements.txt -q
+            launchctl stop com.nyapsys.backend
+            sleep 3
+            launchctl start com.nyapsys.backend
+            sleep 5
+            curl -sf http://127.0.0.1:8000/health || exit 1
+            echo "Deploy successful"

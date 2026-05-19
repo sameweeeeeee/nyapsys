@@ -17,11 +17,7 @@ export interface Conversation {
   updated_at: string
 }
 
-export async function* streamChat(
-  message: string,
-  conversationId: string,
-  file?: File
-): AsyncGenerator<string> {
+export async function* streamChat(message: string, conversationId: string, file?: File): AsyncGenerator<string> {
   const formData = new FormData()
   formData.append('message', message)
   formData.append('conversation_id', conversationId)
@@ -29,15 +25,11 @@ export async function* streamChat(
 
   const response = await fetch(`${API_URL}/chat`, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${API_KEY}`,
-    },
+    headers: { 'Authorization': `Bearer ${API_KEY}` },
     body: formData,
   })
 
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-  }
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
 
   const reader = response.body!.getReader()
   const decoder = new TextDecoder()
@@ -45,10 +37,8 @@ export async function* streamChat(
   while (true) {
     const { done, value } = await reader.read()
     if (done) break
-
     const chunk = decoder.decode(value)
     const lines = chunk.split('\n')
-
     for (const line of lines) {
       if (line.startsWith('data: ')) {
         const data = line.slice(6)
@@ -60,25 +50,18 @@ export async function* streamChat(
 }
 
 export async function fetchConversations(): Promise<Conversation[]> {
-  const response = await fetch(`${API_URL}/conversations`, {
-    headers: { 'Authorization': `Bearer ${API_KEY}` },
-  })
+  const response = await fetch(`${API_URL}/conversations`, { headers: { 'Authorization': `Bearer ${API_KEY}` } })
   if (!response.ok) throw new Error('Failed to fetch conversations')
   return response.json()
 }
 
 export async function fetchMessages(conversationId: string): Promise<Message[]> {
-  const response = await fetch(`${API_URL}/conversations/${conversationId}/messages`, {
-    headers: { 'Authorization': `Bearer ${API_KEY}` },
-  })
+  const response = await fetch(`${API_URL}/conversations/${conversationId}/messages`, { headers: { 'Authorization': `Bearer ${API_KEY}` } })
   if (!response.ok) throw new Error('Failed to fetch messages')
   return response.json()
 }
 
 export async function deleteConversation(conversationId: string): Promise<void> {
-  const response = await fetch(`${API_URL}/conversations/${conversationId}`, {
-    method: 'DELETE',
-    headers: { 'Authorization': `Bearer ${API_KEY}` },
-  })
+  const response = await fetch(`${API_URL}/conversations/${conversationId}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${API_KEY}` } })
   if (!response.ok) throw new Error('Failed to delete conversation')
 }

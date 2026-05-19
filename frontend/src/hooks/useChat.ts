@@ -20,38 +20,29 @@ export function useChat() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [attachedFile, setAttachedFile] = useState<File | null>(null)
-
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [])
 
-  useEffect(() => {
-    scrollToBottom()
-  }, [messages, scrollToBottom])
+  useEffect(() => { scrollToBottom() }, [messages, scrollToBottom])
 
   const loadConversations = useCallback(async () => {
     try {
       const convs = await fetchConversations()
       setConversations(convs)
-    } catch (err) {
-      console.error('Failed to load conversations:', err)
-    }
+    } catch (err) { console.error('Failed to load conversations:', err) }
   }, [])
 
   const loadMessages = useCallback(async (convId: string) => {
     try {
       const msgs = await fetchMessages(convId)
       setMessages(msgs.map(m => ({ ...m, isStreaming: false })))
-    } catch (err) {
-      console.error('Failed to load messages:', err)
-    }
+    } catch (err) { console.error('Failed to load messages:', err) }
   }, [])
 
-  useEffect(() => {
-    loadConversations()
-  }, [loadConversations])
+  useEffect(() => { loadConversations() }, [loadConversations])
 
   const selectConversation = useCallback((convId: string) => {
     setConversationId(convId)
@@ -70,61 +61,26 @@ export function useChat() {
 
   const sendMessage = useCallback(async (content: string) => {
     if (!content.trim() && !attachedFile) return
-
     setIsLoading(true)
     setError(null)
 
-    const userMessage: ChatMessage = {
-      id: generateId(),
-      role: 'user',
-      content: content || (attachedFile ? `File: ${attachedFile.name}` : ''),
-      created_at: new Date().toISOString(),
-      isStreaming: false,
-    }
-
-    const assistantMessage: ChatMessage = {
-      id: generateId(),
-      role: 'assistant',
-      content: '',
-      created_at: new Date().toISOString(),
-      isStreaming: true,
-    }
+    const userMessage: ChatMessage = { id: generateId(), role: 'user', content: content || `File: ${attachedFile?.name}`, created_at: new Date().toISOString(), isStreaming: false }
+    const assistantMessage: ChatMessage = { id: generateId(), role: 'assistant', content: '', created_at: new Date().toISOString(), isStreaming: true }
 
     setMessages(prev => [...prev, userMessage, assistantMessage])
 
     try {
       const stream = streamChat(content, conversationId, attachedFile || undefined)
       let fullResponse = ''
-
       for await (const token of stream) {
         fullResponse += token
-        setMessages(prev =>
-          prev.map((m, i) =>
-            m.id === assistantMessage.id
-              ? { ...m, content: fullResponse }
-              : m
-          )
-        )
+        setMessages(prev => prev.map((m, i) => m.id === assistantMessage.id ? { ...m, content: fullResponse } : m))
       }
-
-      setMessages(prev =>
-        prev.map(m =>
-          m.id === assistantMessage.id
-            ? { ...m, isStreaming: false }
-            : m
-        )
-      )
-
+      setMessages(prev => prev.map(m => m.id === assistantMessage.id ? { ...m, isStreaming: false } : m))
       setAttachedFile(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send message')
-      setMessages(prev =>
-        prev.map(m =>
-          m.id === assistantMessage.id
-            ? { ...m, content: 'Error: Failed to get response', isStreaming: false }
-            : m
-        )
-      )
+      setMessages(prev => prev.map(m => m.id === assistantMessage.id ? { ...m, content: 'Error: Failed to get response', isStreaming: false } : m))
     } finally {
       setIsLoading(false)
     }
@@ -134,35 +90,12 @@ export function useChat() {
     try {
       await deleteConversation(convId)
       setConversations(prev => prev.filter(c => c.id !== convId))
-      if (convId === conversationId) {
-        startNewConversation()
-      }
-    } catch (err) {
-      console.error('Failed to delete conversation:', err)
-    }
+      if (convId === conversationId) startNewConversation()
+    } catch (err) { console.error('Failed to delete:', err) }
   }, [conversationId, startNewConversation])
 
-  const attachFile = useCallback((file: File) => {
-    setAttachedFile(file)
-  }, [])
+  const attachFile = useCallback((file: File) => { setAttachedFile(file) }, [])
+  const removeFile = useCallback(() => { setAttachedFile(null) }, [])
 
-  const removeFile = useCallback(() => {
-    setAttachedFile(null)
-  }, [])
-
-  return {
-    messages,
-    conversations,
-    conversationId,
-    isLoading,
-    error,
-    attachedFile,
-    sendMessage,
-    selectConversation,
-    startNewConversation,
-    removeConversation,
-    attachFile,
-    removeFile,
-    messagesEndRef,
-  }
+  return { messages, conversations, conversationId, isLoading, error, attachedFile, sendMessage, selectConversation, startNewConversation, removeConversation, attachFile, removeFile, messagesEndRef }
 }

@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
@@ -12,44 +11,46 @@ class DatasetConfig:
 
 DATASET_MIX = [
     DatasetConfig(
+        name="FineWeb",
+        hf_id="HuggingFaceFW/fineweb",
+        purpose="General knowledge pretraining",
+        mix_percent=40.0,
+    ),
+    DatasetConfig(
+        name="Wikipedia EN",
+        hf_id="wikimedia/wikipedia",
+        purpose="Factual knowledge",
+        mix_percent=20.0,
+    ),
+    DatasetConfig(
+        name="Books3",
+        hf_id="the_pile",
+        purpose="Long-form reasoning",
+        mix_percent=15.0,
+    ),
+    DatasetConfig(
         name="Alpaca Cleaned",
         hf_id="yahma/alpaca-cleaned",
-        purpose="General instruction following",
-        mix_percent=30.0,
+        purpose="Instruction following",
+        mix_percent=10.0,
     ),
     DatasetConfig(
         name="SQuAD v2",
         hf_id="rajpurkar/squad_v2",
-        purpose="Reading comprehension / document Q&A",
-        mix_percent=25.0,
-    ),
-    DatasetConfig(
-        name="LLaVA Instruct",
-        hf_id="HuggingFaceH4/llava-instruct-mix-vsft",
-        purpose="Vision + image Q&A — critical for 11B Vision",
-        mix_percent=25.0,
-    ),
-    DatasetConfig(
-        name="LMSYS Chat 1M",
-        hf_id="lmsys/lmsys-chat-1m",
-        purpose="Real multi-turn conversations",
-        mix_percent=15.0,
+        purpose="Document Q&A",
+        mix_percent=8.0,
     ),
     DatasetConfig(
         name="Custom JSONL",
         hf_id="local",
-        purpose="Nyapsys persona + domain-specific examples",
-        mix_percent=5.0,
+        purpose="Nyapsys-specific examples",
+        mix_percent=7.0,
     ),
 ]
 
-TARGET_TRAIN_SAMPLES = 50000
+TARGET_PRETRAIN_TOKENS = 14_000_000_000
+INSTRUCTION_EXAMPLES = 50000
 TRAIN_EVAL_SPLIT = 0.9
 
-CHAT_TEMPLATE = "<|begin_of_text|><|start_header_id|>{role}<|end_header_id|>\n{content}<|eot_id|>"
-
-SYSTEM_MESSAGE = "You are Nyapsys, a helpful AI assistant. You answer questions accurately, read and analyse files, and understand images. Be concise but thorough. If you are unsure, say so."
-
-VISION_SYSTEM_INJECT = "You are Nyapsys. "
-
-MAX_SEQ_LENGTH = 2048
+VOCAB_SIZE = 32000
+MAX_SEQ_LENGTH = 4096

@@ -21,14 +21,7 @@ export function ChatWindow({ messages, messagesEndRef }: ChatWindowProps) {
           <p>Ask me anything, upload files, or share images.</p>
         </div>
       ) : (
-        messages.map((msg) => (
-          <MessageBubble
-            key={msg.id}
-            role={msg.role}
-            content={msg.content}
-            isStreaming={msg.isStreaming}
-          />
-        ))
+        messages.map((msg) => <MessageBubble key={msg.id} role={msg.role} content={msg.content} isStreaming={msg.isStreaming} />)
       )}
       <div ref={messagesEndRef} />
     </div>
