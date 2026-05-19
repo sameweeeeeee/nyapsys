@@ -1,0 +1,10 @@
+unsloth
+trl
+transformers
+peft
+datasets
+boto3
+bitsandbytes
+accelerate
+torch
+sentence-transformers
