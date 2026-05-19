@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+chromadb-client
+pymupdf
+python-docx
+pillow
+httpx
+aiosqlite
+sentence-transformers
+pandas
+python-multipart
