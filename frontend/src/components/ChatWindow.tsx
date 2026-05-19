@@ -9,7 +9,7 @@ interface ChatMessage {
 
 interface ChatWindowProps {
   messages: ChatMessage[]
-  messagesEndRef: React.RefObject<HTMLDivElement | null>
+  messagesEndRef: React.RefObject<HTMLDivElement>
 }
 
 export function ChatWindow({ messages, messagesEndRef }: ChatWindowProps) {

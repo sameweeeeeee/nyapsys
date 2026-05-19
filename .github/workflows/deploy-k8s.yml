@@ -1,0 +1,50 @@
+name: Deploy Middleware to Kubernetes
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'middleware/**'
+      - '.github/workflows/deploy-k8s.yml'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to DO Container Registry
+        run: |
+          echo "${{ secrets.DO_ACCESS_TOKEN }}" | \
+            docker login registry.digitalocean.com -u token --password-stdin
+
+      - name: Build and push image
+        run: |
+          IMAGE=registry.digitalocean.com/nyapsys/middleware:${{ github.sha }}
+          docker build -t $IMAGE ./middleware
+          docker push $IMAGE
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_DATA }}" | base64 -d > ~/.kube/config
+
+      - name: Update deployment image
+        run: |
+          kubectl set image deployment/middleware \
+            middleware=${{ env.IMAGE }} \
+            -n nyapsys
+
+      - name: Apply any manifest changes
+        run: kubectl apply -f middleware/k8s/ -n nyapsys
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/middleware \
+            -n nyapsys --timeout=120s
+
+      - name: Smoke test
+        run: |
+          sleep 10
+          curl -f ${{ secrets.NEXT_PUBLIC_API_URL }}/health

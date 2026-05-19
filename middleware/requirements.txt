@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+python-jose
+httpx
+slowapi
+python-multipart
