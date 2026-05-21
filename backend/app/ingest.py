@@ -76,6 +76,7 @@ async def ingest_file(file_bytes: bytes, filename: str, file_type: str, conversa
         ids = []
 
     await db.insert_file(file_id, conversation_id, filename, file_type, len(file_bytes), len(chunks), ids)
+    rag.unload_embedder()
     return IngestResult(file_id, len(chunks), filename)
 
 

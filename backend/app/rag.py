@@ -59,3 +59,10 @@ def delete_by_conversation(conversation_id: str):
     results = collection.get(where={"conversation_id": conversation_id})
     if results["ids"]:
         collection.delete(ids=results["ids"])
+
+
+def unload_embedder():
+    global _embedding_model
+    _embedding_model = None
+    import gc
+    gc.collect()

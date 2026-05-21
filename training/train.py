@@ -1,16 +1,49 @@
 import os
 import argparse
+import subprocess
 from pathlib import Path
 import json
+import math
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
+from torch.utils.checkpoint import checkpoint
 from transformers import get_cosine_schedule_with_warmup
 from tqdm import tqdm
 
 from model_config import get_config
+
+
+class RotaryEmbedding(nn.Module):
+    def __init__(self, dim: int, max_seq_len: int = 4096, theta: float = 10000.0):
+        super().__init__()
+        inv_freq = 1.0 / (theta ** (torch.arange(0, dim, 2).float() / dim))
+        self.register_buffer("inv_freq", inv_freq, persistent=False)
+        self.max_seq_len = max_seq_len
+        self._cache_cos = None
+        self._cache_sin = None
+        self._cache_len = 0
+
+    def forward(self, x: torch.Tensor, seq_len: int):
+        if seq_len > self._cache_len:
+            t = torch.arange(seq_len, device=x.device, dtype=self.inv_freq.dtype)
+            freqs = torch.outer(t, self.inv_freq)
+            emb = torch.cat((freqs, freqs), dim=-1)
+            self._cache_cos = emb.cos()[None, :, None, :]
+            self._cache_sin = emb.sin()[None, :, None, :]
+            self._cache_len = seq_len
+        return self._cache_cos[:, :seq_len], self._cache_sin[:, :seq_len]
+
+
+def apply_rope(q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> tuple:
+    def rotate_half(x):
+        x1, x2 = x.chunk(2, dim=-1)
+        return torch.cat((-x2, x1), dim=-1)
+    q_rotated = q * cos + rotate_half(q) * sin
+    k_rotated = k * cos + rotate_half(k) * sin
+    return q_rotated, k_rotated
 
 
 class MoEModel(nn.Module):
@@ -18,19 +51,26 @@ class MoEModel(nn.Module):
         super().__init__()
         self.config = config
         self.token_embedding = nn.Embedding(config["vocab_size"], config["hidden_size"])
-        self.position_embedding = nn.Embedding(config["max_position_embeddings"], config["hidden_size"])
         self.layers = nn.ModuleList([MoELayer(config) for _ in range(config["num_hidden_layers"])])
         self.norm = nn.RMSNorm(config["hidden_size"], eps=config["rms_norm_eps"])
         self.lm_head = nn.Linear(config["hidden_size"], config["vocab_size"], bias=False)
+        self.rope = RotaryEmbedding(
+            dim=config["hidden_size"] // config["num_attention_heads"],
+            max_seq_len=config["max_position_embeddings"],
+            theta=config["rope_theta"],
+        )
 
-    def forward(self, input_ids, attention_mask=None):
+    def forward(self, input_ids, attention_mask=None, use_checkpoint: bool = False):
         batch_size, seq_len = input_ids.shape
-        positions = torch.arange(seq_len, device=input_ids.device).unsqueeze(0)
-        x = self.token_embedding(input_ids) + self.position_embedding(positions)
+        x = self.token_embedding(input_ids)
+        cos, sin = self.rope(x, seq_len)
 
         all_router_logits = []
         for layer in self.layers:
-            x, router_logits = layer(x, attention_mask)
+            if use_checkpoint:
+                x, router_logits = checkpoint(layer, x, cos, sin, attention_mask, use_reentrant=False)
+            else:
+                x, router_logits = layer(x, cos, sin, attention_mask)
             all_router_logits.append(router_logits)
 
         x = self.norm(x)
@@ -42,7 +82,15 @@ class MoELayer(nn.Module):
         super().__init__()
         hidden_size = config["hidden_size"]
         num_heads = config["num_attention_heads"]
-        self.attn = nn.MultiheadAttention(hidden_size, num_heads, batch_first=True)
+        self.num_kv_heads = config["num_key_value_heads"]
+        self.head_dim = hidden_size // num_heads
+        self.num_heads = num_heads
+
+        self.q_proj = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.k_proj = nn.Linear(hidden_size, self.num_kv_heads * self.head_dim, bias=False)
+        self.v_proj = nn.Linear(hidden_size, self.num_kv_heads * self.head_dim, bias=False)
+        self.o_proj = nn.Linear(hidden_size, hidden_size, bias=False)
+
         self.norm1 = nn.RMSNorm(hidden_size, eps=config["rms_norm_eps"])
         self.norm2 = nn.RMSNorm(hidden_size, eps=config["rms_norm_eps"])
 
@@ -57,9 +105,28 @@ class MoELayer(nn.Module):
         self.router = nn.Linear(hidden_size, self.num_experts)
         self.num_experts_per_token = config["num_experts_per_token"]
 
-    def forward(self, x, attention_mask=None):
-        attn_out, _, _ = self.attn(x, x, x, attn_mask=attention_mask)
-        x = self.norm1(x + attn_out)
+    def _apply_attention(self, x, cos, sin, attention_mask=None):
+        batch_size, seq_len, _ = x.shape
+        q = self.q_proj(x).view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+        k = self.k_proj(x).view(batch_size, seq_len, self.num_kv_heads, self.head_dim).transpose(1, 2)
+        v = self.v_proj(x).view(batch_size, seq_len, self.num_kv_heads, self.head_dim).transpose(1, 2)
+
+        q, k = apply_rope(q, k, cos, sin)
+
+        k_expanded = k.repeat_interleave(self.num_heads // self.num_kv_heads, dim=1)
+        v_expanded = v.repeat_interleave(self.num_heads // self.num_kv_heads, dim=1)
+
+        attn_weights = torch.matmul(q, k_expanded.transpose(-2, -1)) / math.sqrt(self.head_dim)
+        if attention_mask is not None:
+            attn_weights = attn_weights + attention_mask
+        attn_weights = F.softmax(attn_weights, dim=-1, dtype=torch.float32).to(q.dtype)
+        attn_out = torch.matmul(attn_weights, v_expanded)
+        attn_out = attn_out.transpose(1, 2).contiguous().view(batch_size, seq_len, -1)
+        return self.o_proj(attn_out)
+
+    def forward(self, x, cos, sin, attention_mask=None):
+        attn_out = self._apply_attention(self.norm1(x), cos, sin, attention_mask)
+        x = x + attn_out
 
         router_logits = self.router(x)
         router_probs = F.softmax(router_logits, dim=-1)
@@ -74,7 +141,7 @@ class MoELayer(nn.Module):
                 expert_output = self.experts[expert_idx](expert_input)
                 expert_out.index_put_(token_indices, expert_output * topk_probs[mask].unsqueeze(-1))
 
-        x = self.norm2(x + expert_out)
+        x = x + self.norm2(expert_out)
         return x, router_logits
 
 
@@ -110,6 +177,17 @@ def collate(batch):
     return padded
 
 
+def upload_to_gcs(local_path: str, gcs_path: str):
+    if not gcs_path.startswith("gs://"):
+        return
+    print(f"Uploading checkpoint to {gcs_path}...")
+    result = subprocess.run(["gsutil", "cp", local_path, gcs_path], capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"WARNING: GCS upload failed: {result.stderr}")
+    else:
+        print(f"Checkpoint uploaded to {gcs_path}")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, default="2b_moe")
@@ -142,7 +220,6 @@ def main():
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
-    model.gradient_checkpointing_enable()
 
     scaler = torch.amp.GradScaler("cuda", enabled=torch.cuda.is_available())
 
@@ -160,7 +237,7 @@ def main():
     for batch in pbar:
         batch = batch.to(device)
         with torch.autocast("cuda", dtype=torch.bfloat16, enabled=torch.cuda.is_available()):
-            logits, router_logits = model(batch[:, :-1])
+            logits, router_logits = model(batch[:, :-1], use_checkpoint=True)
             loss = compute_loss(logits, batch[:, 1:], router_logits[-1], config)
             loss = loss / args.gradient_accumulation_steps
 
@@ -183,6 +260,8 @@ def main():
             ckpt_path = f"{args.output_dir}/step-{global_step + 1}.pt"
             torch.save({"model": model.state_dict(), "config": config, "step": global_step + 1}, ckpt_path)
             print(f"Saved checkpoint: {ckpt_path}")
+            if args.output_dir.startswith("gs://"):
+                upload_to_gcs(ckpt_path, f"{args.output_dir}/step-{global_step + 1}.pt")
 
         global_step += 1
         if args.max_steps and global_step >= args.max_steps:
