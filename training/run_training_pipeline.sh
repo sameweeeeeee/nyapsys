@@ -23,7 +23,11 @@ die()     { fail "$1"; echo ""; exit 1; }
 
 # ── Config ───────────────────────────────────────────────
 GCP_PROJECT="${GCP_PROJECT:-nyapsys}"
-GCP_ZONE="${GCP_ZONE:-asia-southeast1-a}"
+GCP_ZONE="${GCP_ZONE:-us-central1-a}"
+GCP_IMAGE="${GCP_IMAGE:-pytorch-2-9-cu129-ubuntu-2204-nvidia-580-v20260518}"
+GCP_IMAGE_PROJECT="${GCP_IMAGE_PROJECT:-deeplearning-platform-release}"
+GCP_MACHINE="${GCP_MACHINE:-g2-standard-8}"
+GCP_ACCELERATOR="${GCP_ACCELERATOR:-type=nvidia-l4,count=1}"
 INSTANCE_NAME="${INSTANCE_NAME:-nyapsys-training}"
 GCS_BUCKET="${GCS_BUCKET:-nyapsys-training}"
 MODEL_BUCKET="${MODEL_BUCKET:-nyapsys-models}"
