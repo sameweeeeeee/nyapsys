@@ -1,8 +1,10 @@
 #!/bin/bash
 set -e
-source ~/nyapsys/.env
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$PROJECT_DIR/.env"
 
-mkdir -p ~/volumes/models ~/volumes/chromadb ~/volumes/sqlite ~/nyapsys/logs
+mkdir -p ~/volumes/models ~/volumes/chromadb ~/volumes/sqlite "$PROJECT_DIR/logs"
 
 echo "Starting llama-server..."
 llama-server \
@@ -35,7 +37,7 @@ sleep 3
 echo "ChromaDB ready"
 
 echo "Starting FastAPI..."
-cd ~/nyapsys/backend
+cd "$PROJECT_DIR/backend"
 python3.11 -m uvicorn app.main:app \
   --host 127.0.0.1 \
   --port 8000 \
