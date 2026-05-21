@@ -1,3 +1,5 @@
+'use client'
+
 import { useRef, useCallback, ChangeEvent } from 'react'
 import { FilePreview } from './FilePreview'
 

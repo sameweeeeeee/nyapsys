@@ -1,3 +1,5 @@
+'use client'
+
 import { useChat } from '../hooks/useChat'
 import { MessageBubble } from '../components/MessageBubble'
 import { MessageInput } from '../components/MessageInput'
@@ -18,7 +20,7 @@ export function ChatWindow() {
       <div className={`sidebar-overlay ${sidebarOpen ? 'open' : ''}`} onClick={() => setSidebarOpen(false)} />
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
-          <span className="sidebar-logo">nya<em>psys</em></span>
+          <img src="/logo.png" alt="Nyapsys" className="sidebar-logo-img" />
           <button className="sidebar-close" onClick={() => setSidebarOpen(false)}>×</button>
         </div>
         <button className="sidebar-new-btn" onClick={startNewConversation}>New conversation</button>
@@ -38,7 +40,7 @@ export function ChatWindow() {
 
       <header className="topbar">
         <button className="topbar-hamburger" onClick={() => setSidebarOpen(true)}>☰</button>
-        <h1 className="topbar-logo">nya<em>psys</em></h1>
+        <img src="/logo.png" alt="Nyapsys" className="topbar-logo-img" />
         <div className="status-pill"><span className="status-dot" /> Running locally</div>
       </header>
 
@@ -46,7 +48,7 @@ export function ChatWindow() {
         <div className="messages-container">
           {isEmpty ? (
             <div className="empty-state">
-              <div className="empty-orb" />
+              <img src="/logo.png" alt="Nyapsys" className="empty-logo" />
               <h2 className="empty-title">What can I help with?</h2>
               <p className="empty-subtitle">Ask anything, upload a file, or share an image. Nyapsys runs entirely on your Mac.</p>
               <div className="empty-pills">

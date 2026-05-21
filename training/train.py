@@ -1,6 +1,7 @@
 import os
 import argparse
 import subprocess
+import random
 from pathlib import Path
 import json
 import math
@@ -319,10 +320,10 @@ class RotaryEmbedding(nn.Module):
             t = torch.arange(seq_len, device=x.device, dtype=self.inv_freq.dtype)
             freqs = torch.outer(t, self.inv_freq)
             emb = torch.cat((freqs, freqs), dim=-1)
-            self._cache_cos = emb.cos()[None, :, None, :]
-            self._cache_sin = emb.sin()[None, :, None, :]
+            self._cache_cos = emb.cos()[None, None, :, :]
+            self._cache_sin = emb.sin()[None, None, :, :]
             self._cache_len = seq_len
-        return self._cache_cos[:, :seq_len], self._cache_sin[:, :seq_len]
+        return self._cache_cos[:, :, :seq_len], self._cache_sin[:, :, :seq_len]
 
 
 def apply_rope(q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> tuple:
@@ -416,25 +417,29 @@ class MoELayer(nn.Module):
         attn_out = self._apply_attention(self.norm1(x), cos, sin, attention_mask)
         x = x + attn_out
 
-        router_logits = self.router(x)
+        batch_size, seq_len, hidden_size = x.shape
+        x_flat = x.view(-1, hidden_size)
+        
+        router_logits = self.router(x_flat)
         router_probs = F.softmax(router_logits, dim=-1)
         topk_probs, topk_indices = torch.topk(router_probs, self.num_experts_per_token, dim=-1)
 
-        expert_out = torch.zeros_like(x)
+        expert_out = torch.zeros_like(x_flat)
         for expert_idx in range(self.num_experts):
             mask = (topk_indices == expert_idx)
             if mask.any():
-                token_indices = mask.nonzero(as_tuple=True)
-                expert_input = x[token_indices[0], token_indices[1]]
+                token_indices = mask.nonzero(as_tuple=True)[0]
+                expert_input = x_flat[token_indices]
                 expert_output = self.experts[expert_idx](expert_input)
-                expert_out.index_put_(token_indices, expert_output * topk_probs[mask].unsqueeze(-1))
+                probs = topk_probs[mask].unsqueeze(-1)
+                expert_out[token_indices] += expert_output * probs
 
-        x = x + self.norm2(expert_out)
+        x = x + self.norm2(expert_out.view(batch_size, seq_len, hidden_size))
         return x, router_logits
 
 
 def compute_loss(logits, labels, router_logits, config):
-    ce_loss = F.cross_entropy(logits.view(-1, logits.size(-1)), labels.view(-1))
+    ce_loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), labels.reshape(-1))
     router_probs = F.softmax(router_logits, dim=-1)
     expert_usage = router_probs.mean(dim=0)
     target_usage = torch.ones_like(expert_usage) / config["num_experts"]
@@ -447,21 +452,100 @@ def log_router_stats(router_logits, step: int):
     print(f"[Step {step}] Expert load: {[f'{p:.2%}' for p in probs.tolist()]}")
 
 
-def load_dataset(path: Path, max_length: int = 4096):
+def load_dataset(path: Path, max_length: int = 4096, limit: int = None):
     data = []
     with open(path) as f:
-        for line in f:
+        for i, line in enumerate(f):
+            if limit and i >= limit:
+                break
             item = json.loads(line)
             text = item.get("text", "")
-            tokens = list(map(int, text.split()))[:max_length]
+            if not text:
+                continue
+            tokens = text.split()[:max_length]
             if tokens:
-                data.append(torch.tensor(tokens, dtype=torch.long))
+                data.append(tokens)
     return data
+
+
+class StreamingDataset:
+    def __init__(self, path: Path, max_length: int = 4096):
+        self.path = path
+        self.max_length = max_length
+        self.count = 0
+        with open(path) as f:
+            for line in f:
+                self.count += 1
+    
+    def __len__(self):
+        return self.count
+    
+    def __getitem__(self, idx):
+        with open(self.path) as f:
+            for i, line in enumerate(f):
+                if i == idx:
+                    item = json.loads(line)
+                    text = item.get("text", "")
+                    tokens = text.split()[:self.max_length]
+                    return tokens if tokens else [""]
+        return [""]
+
+
+class StreamingDataLoader:
+    def __init__(self, dataset, batch_size=4, shuffle=True):
+        self.dataset = dataset
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.indices = list(range(len(dataset)))
+        if shuffle:
+            random.shuffle(self.indices)
+        self.current_idx = 0
+    
+    def __iter__(self):
+        self.current_idx = 0
+        if self.shuffle:
+            random.shuffle(self.indices)
+        return self
+    
+    def __next__(self):
+        if self.current_idx >= len(self.indices):
+            raise StopIteration
+        
+        batch_indices = self.indices[self.current_idx:self.current_idx + self.batch_size]
+        self.current_idx += self.batch_size
+        
+        batch = []
+        for idx in batch_indices:
+            tokens = self.dataset[idx]
+            ids = [abs(hash(token)) % 32000 for token in tokens]
+            batch.append(torch.tensor(ids, dtype=torch.long))
+        
+        max_len = max(len(x) for x in batch)
+        padded = torch.stack([torch.cat([x, torch.zeros(max_len - len(x), dtype=torch.long)]) for x in batch])
+        return padded
+
+
+def tokenize_batch(batch, vocab_size=32000):
+    token_ids = []
+    for seq in batch:
+        ids = [hash(token) % vocab_size for token in seq]
+        token_ids.append(torch.tensor(ids, dtype=torch.long))
+    return token_ids
 
 
 def collate(batch):
     max_len = max(len(x) for x in batch)
     padded = torch.stack([torch.cat([x, torch.zeros(max_len - len(x), dtype=torch.long)]) for x in batch])
+    return padded
+
+
+def collate_text(batch, vocab_size=32000):
+    tokenized = []
+    for seq in batch:
+        ids = [abs(hash(token)) % vocab_size for token in seq]
+        tokenized.append(torch.tensor(ids, dtype=torch.long))
+    max_len = max(len(x) for x in tokenized)
+    padded = torch.stack([torch.cat([x, torch.zeros(max_len - len(x), dtype=torch.long)]) for x in tokenized])
     return padded
 
 
@@ -492,12 +576,16 @@ def main():
     args = parser.parse_args()
 
     config = get_config(args.config)
+    if args.smoke_test:
+        from model_config import CONFIG_2B_MOE_SMOKE
+        config = CONFIG_2B_MOE_SMOKE
     print(f"Training {args.config}: {config}")
 
     train_path = Path(args.data_path) / "train.jsonl"
-    train_data = load_dataset(train_path, config["max_position_embeddings"])
     if args.smoke_test:
-        train_data = train_data[:max(1, len(train_data) // 100)]
+        train_data = load_dataset(train_path, config["max_position_embeddings"], limit=10000)
+    else:
+        train_data = StreamingDataset(train_path, config["max_position_embeddings"])
     print(f"Train: {len(train_data)} samples")
 
     model = MoEModel(config)
@@ -515,7 +603,10 @@ def main():
     total_steps = args.max_steps if args.max_steps else (len(train_data) * 3 // args.batch_size)
     scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=args.warmup_steps, num_training_steps=total_steps)
 
-    train_loader = DataLoader(train_data, batch_size=args.batch_size, shuffle=True, collate_fn=collate)
+    if args.smoke_test:
+        train_loader = DataLoader(train_data, batch_size=args.batch_size, shuffle=True, collate_fn=collate_text)
+    else:
+        train_loader = StreamingDataLoader(train_data, batch_size=args.batch_size, shuffle=True)
     os.makedirs(args.output_dir, exist_ok=True)
 
     global_step = 0

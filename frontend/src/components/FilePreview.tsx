@@ -1,3 +1,5 @@
+'use client'
+
 export function FilePreview({ file, onRemove }: { file: File; onRemove: () => void }) {
   const isImage = file.type.startsWith('image/')
   return (
