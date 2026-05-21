@@ -9,3 +9,4 @@ aiosqlite
 sentence-transformers
 pandas
 python-multipart
+duckduckgo-search

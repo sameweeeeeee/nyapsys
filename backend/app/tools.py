@@ -1,4 +1,3 @@
-import httpx
 import os
 import json
 import asyncio
@@ -59,13 +58,17 @@ async def call_tool(name: str, args: dict) -> str:
         return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     if name == "web_search":
-        api_key = os.getenv("SERPAPI_KEY", "")
-        if api_key:
-            async with httpx.AsyncClient() as client:
-                r = await client.get("https://serpapi.com/search", params={"q": args["query"], "api_key": api_key, "num": 5})
-                results = r.json().get("organic_results", [])
-                return "\n".join(f"{r['title']}: {r['snippet']}" for r in results[:3])
-        return "Web search not configured. Set SERPAPI_KEY in .env"
+        try:
+            from duckduckgo_search import DDGS
+            with DDGS() as ddgs:
+                results = list(ddgs.text(args["query"], max_results=5))
+            if not results:
+                return "No results found"
+            return "\n".join(f"{r['title']}: {r['body']}" for r in results[:3])
+        except ImportError:
+            return "Web search unavailable. Install duckduckgo-search: pip install duckduckgo-search"
+        except Exception as e:
+            return f"Web search error: {e}"
 
     if name == "run_python":
         timeout = int(os.getenv("TOOL_TIMEOUT_SECONDS", "10"))
