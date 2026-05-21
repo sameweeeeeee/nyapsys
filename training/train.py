@@ -10,10 +10,298 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torch.utils.checkpoint import checkpoint
-from transformers import get_cosine_schedule_with_warmup
+from transformers import get_cosine_schedule_with_warmup, PreTrainedModel, PretrainedConfig
 from tqdm import tqdm
 
 from model_config import get_config
+
+
+class NyapsysMoEConfig(PretrainedConfig):
+    model_type = "nyapsys_moe"
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+class NyapsysMoEForCausalLM(PreTrainedModel):
+    config_class = NyapsysMoEConfig
+    base_model_prefix = "model"
+
+    def __init__(self, config):
+        super().__init__(config)
+        self.config = config
+        self.model = MoEModel(config)
+
+    def forward(self, input_ids, attention_mask=None, labels=None, **kwargs):
+        logits, router_logits = self.model(input_ids, attention_mask, use_checkpoint=False)
+        loss = None
+        if labels is not None:
+            shift_logits = logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            loss = F.cross_entropy(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+        return {"logits": logits, "loss": loss, "router_logits": router_logits[-1] if router_logits else None}
+
+    def generate(self, input_ids, max_new_tokens=256, **kwargs):
+        generated = input_ids.clone()
+        for _ in range(max_new_tokens):
+            with torch.no_grad():
+                outputs = self.forward(generated)
+            next_token = outputs["logits"][:, -1, :].argmax(dim=-1, keepdim=True)
+            generated = torch.cat([generated, next_token], dim=-1)
+            if next_token.item() == self.config.eos_token_id:
+                break
+        return generated
+
+
+def save_as_hf(model, config, output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+    hf_config = NyapsysMoEConfig(**config, eos_token_id=2, bos_token_id=1, pad_token_id=0, vocab_size=config["vocab_size"], hidden_size=config["hidden_size"])
+    hf_model = NyapsysMoEForCausalLM(hf_config)
+    hf_model.model.load_state_dict(model.state_dict())
+    hf_model.save_pretrained(output_dir)
+    hf_config.save_pretrained(output_dir)
+    print(f"HuggingFace model saved to {output_dir}")
+
+
+class NyapsysMoEConfig(PretrainedConfig):
+    model_type = "nyapsys_moe"
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+class NyapsysMoEForCausalLM(PreTrainedModel):
+    config_class = NyapsysMoEConfig
+    base_model_prefix = "model"
+
+    def __init__(self, config):
+        super().__init__(config)
+        self.config = config
+        self.model = MoEModel(config)
+
+    def forward(self, input_ids, attention_mask=None, labels=None, **kwargs):
+        logits, router_logits = self.model(input_ids, attention_mask, use_checkpoint=False)
+        loss = None
+        if labels is not None:
+            shift_logits = logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            loss = F.cross_entropy(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+        return {"logits": logits, "loss": loss, "router_logits": router_logits[-1] if router_logits else None}
+
+    def generate(self, input_ids, max_new_tokens=256, **kwargs):
+        generated = input_ids.clone()
+        for _ in range(max_new_tokens):
+            with torch.no_grad():
+                outputs = self.forward(generated)
+            next_token = outputs["logits"][:, -1, :].argmax(dim=-1, keepdim=True)
+            generated = torch.cat([generated, next_token], dim=-1)
+            if next_token.item() == self.config.eos_token_id:
+                break
+        return generated
+
+
+def save_as_hf(model, config, output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+    hf_config = NyapsysMoEConfig(**config, eos_token_id=2, bos_token_id=1, pad_token_id=0, vocab_size=config["vocab_size"], hidden_size=config["hidden_size"])
+    hf_model = NyapsysMoEForCausalLM(hf_config)
+    hf_model.model.load_state_dict(model.state_dict())
+    hf_model.save_pretrained(output_dir)
+    hf_config.save_pretrained(output_dir)
+    print(f"HuggingFace model saved to {output_dir}")
+
+
+class NyapsysMoEConfig(PretrainedConfig):
+    model_type = "nyapsys_moe"
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+class NyapsysMoEForCausalLM(PreTrainedModel):
+    config_class = NyapsysMoEConfig
+    base_model_prefix = "model"
+
+    def __init__(self, config):
+        super().__init__(config)
+        self.config = config
+        self.model = MoEModel(config)
+
+    def forward(self, input_ids, attention_mask=None, labels=None, **kwargs):
+        logits, router_logits = self.model(input_ids, attention_mask, use_checkpoint=False)
+        loss = None
+        if labels is not None:
+            shift_logits = logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            loss = F.cross_entropy(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+        return {"logits": logits, "loss": loss, "router_logits": router_logits[-1] if router_logits else None}
+
+    def generate(self, input_ids, max_new_tokens=256, **kwargs):
+        generated = input_ids.clone()
+        for _ in range(max_new_tokens):
+            with torch.no_grad():
+                outputs = self.forward(generated)
+            next_token = outputs["logits"][:, -1, :].argmax(dim=-1, keepdim=True)
+            generated = torch.cat([generated, next_token], dim=-1)
+            if next_token.item() == self.config.eos_token_id:
+                break
+        return generated
+
+
+def save_as_hf(model, config, output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+    hf_config = NyapsysMoEConfig(**config, eos_token_id=2, bos_token_id=1, pad_token_id=0, vocab_size=config["vocab_size"], hidden_size=config["hidden_size"])
+    hf_model = NyapsysMoEForCausalLM(hf_config)
+    hf_model.model.load_state_dict(model.state_dict())
+    hf_model.save_pretrained(output_dir)
+    hf_config.save_pretrained(output_dir)
+    print(f"HuggingFace model saved to {output_dir}")
+
+
+class NyapsysMoEConfig(PretrainedConfig):
+    model_type = "nyapsys_moe"
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+class NyapsysMoEForCausalLM(PreTrainedModel):
+    config_class = NyapsysMoEConfig
+    base_model_prefix = "model"
+
+    def __init__(self, config):
+        super().__init__(config)
+        self.config = config
+        self.model = MoEModel(config)
+
+    def forward(self, input_ids, attention_mask=None, labels=None, **kwargs):
+        logits, router_logits = self.model(input_ids, attention_mask, use_checkpoint=False)
+        loss = None
+        if labels is not None:
+            shift_logits = logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            loss = F.cross_entropy(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+        return {"logits": logits, "loss": loss, "router_logits": router_logits[-1] if router_logits else None}
+
+    def generate(self, input_ids, max_new_tokens=256, **kwargs):
+        generated = input_ids.clone()
+        for _ in range(max_new_tokens):
+            with torch.no_grad():
+                outputs = self.forward(generated)
+            next_token = outputs["logits"][:, -1, :].argmax(dim=-1, keepdim=True)
+            generated = torch.cat([generated, next_token], dim=-1)
+            if next_token.item() == self.config.eos_token_id:
+                break
+        return generated
+
+
+def save_as_hf(model, config, output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+    hf_config = NyapsysMoEConfig(**config, eos_token_id=2, bos_token_id=1, pad_token_id=0, vocab_size=config["vocab_size"], hidden_size=config["hidden_size"])
+    hf_model = NyapsysMoEForCausalLM(hf_config)
+    hf_model.model.load_state_dict(model.state_dict())
+    hf_model.save_pretrained(output_dir)
+    hf_config.save_pretrained(output_dir)
+    print(f"HuggingFace model saved to {output_dir}")
+
+
+class NyapsysMoEConfig(PretrainedConfig):
+    model_type = "nyapsys_moe"
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+class NyapsysMoEForCausalLM(PreTrainedModel):
+    config_class = NyapsysMoEConfig
+    base_model_prefix = "model"
+
+    def __init__(self, config):
+        super().__init__(config)
+        self.config = config
+        self.model = MoEModel(config)
+
+    def forward(self, input_ids, attention_mask=None, labels=None, **kwargs):
+        logits, router_logits = self.model(input_ids, attention_mask, use_checkpoint=False)
+        loss = None
+        if labels is not None:
+            shift_logits = logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            loss = F.cross_entropy(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+        return {"logits": logits, "loss": loss, "router_logits": router_logits[-1] if router_logits else None}
+
+    def generate(self, input_ids, max_new_tokens=256, **kwargs):
+        generated = input_ids.clone()
+        for _ in range(max_new_tokens):
+            with torch.no_grad():
+                outputs = self.forward(generated)
+            next_token = outputs["logits"][:, -1, :].argmax(dim=-1, keepdim=True)
+            generated = torch.cat([generated, next_token], dim=-1)
+            if next_token.item() == self.config.eos_token_id:
+                break
+        return generated
+
+
+def save_as_hf(model, config, output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+    hf_config = NyapsysMoEConfig(**config, eos_token_id=2, bos_token_id=1, pad_token_id=0, vocab_size=config["vocab_size"], hidden_size=config["hidden_size"])
+    hf_model = NyapsysMoEForCausalLM(hf_config)
+    hf_model.model.load_state_dict(model.state_dict())
+    hf_model.save_pretrained(output_dir)
+    hf_config.save_pretrained(output_dir)
+    print(f"HuggingFace model saved to {output_dir}")
+
+
+class NyapsysMoEConfig(PretrainedConfig):
+    model_type = "nyapsys_moe"
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+
+class NyapsysMoEForCausalLM(PreTrainedModel):
+    config_class = NyapsysMoEConfig
+    base_model_prefix = "model"
+
+    def __init__(self, config):
+        super().__init__(config)
+        self.config = config
+        self.model = MoEModel(config)
+
+    def forward(self, input_ids, attention_mask=None, labels=None, **kwargs):
+        logits, router_logits = self.model(input_ids, attention_mask, use_checkpoint=False)
+        loss = None
+        if labels is not None:
+            shift_logits = logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            loss = F.cross_entropy(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+        return {"logits": logits, "loss": loss, "router_logits": router_logits[-1] if router_logits else None}
+
+    def generate(self, input_ids, max_new_tokens=256, **kwargs):
+        generated = input_ids.clone()
+        for _ in range(max_new_tokens):
+            with torch.no_grad():
+                outputs = self.forward(generated)
+            next_token = outputs["logits"][:, -1, :].argmax(dim=-1, keepdim=True)
+            generated = torch.cat([generated, next_token], dim=-1)
+            if next_token.item() == self.config.eos_token_id:
+                break
+        return generated
+
+
+def save_as_hf(model, config, output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+    hf_config = NyapsysMoEConfig(**config, eos_token_id=2, bos_token_id=1, pad_token_id=0, vocab_size=config["vocab_size"], hidden_size=config["hidden_size"])
+    hf_model = NyapsysMoEForCausalLM(hf_config)
+    hf_model.model.load_state_dict(model.state_dict())
+    hf_model.save_pretrained(output_dir)
+    hf_config.save_pretrained(output_dir)
+    print(f"HuggingFace model saved to {output_dir}")
 
 
 class RotaryEmbedding(nn.Module):
@@ -269,6 +557,13 @@ def main():
 
     torch.save({"model": model.state_dict(), "config": config}, f"{args.output_dir}/final.pt")
     print("Done!")
+
+    if not args.smoke_test and not args.output_dir.startswith("gs://"):
+        print("\nConverting to HuggingFace format for instruction tuning...")
+        save_as_hf(model, config, f"{args.output_dir}/hf_model")
+        if args.output_dir.startswith("gs://"):
+            subprocess.run(["gsutil", "-m", "cp", "-r", f"{args.output_dir}/hf_model", f"{args.output_dir}/hf_model_gcs"], capture_output=True)
+        print("HuggingFace model saved — ready for instruction_tune.py")
 
 
 if __name__ == "__main__":
