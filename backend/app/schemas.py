@@ -29,3 +29,12 @@ class HealthResponse(BaseModel):
     status: str
     model: str
     uptime_seconds: int
+
+
+class ToolCall(BaseModel):
+    name: str
+    args: dict
+
+
+class ToolResponse(BaseModel):
+    result: str

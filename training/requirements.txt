@@ -8,3 +8,5 @@ google-cloud-storage
 accelerate
 bitsandbytes
 scipy
+datasketch
+openai

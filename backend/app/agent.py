@@ -1,10 +1,13 @@
 import os
+import json
 from typing import AsyncGenerator, Optional
 
 from app import db, rag, model, ingest
+from app.tools import TOOLS, call_tool
 
 
 MAX_HISTORY_MESSAGES = int(os.getenv("MAX_HISTORY_MESSAGES", "10"))
+MAX_TOOL_ROUNDS = int(os.getenv("MAX_TOOL_ROUNDS", "5"))
 SYSTEM_MESSAGE = "You are Nyapsys, a helpful AI assistant. You answer questions accurately, read and analyse files, and understand images. Be concise but thorough. If you are unsure, say so."
 
 
@@ -46,7 +49,7 @@ async def run(user_message: str, conversation_id: str, file_bytes: Optional[byte
             yield token
     else:
         messages.append({"role": "user", "content": user_message})
-        async for token in model.generate(messages=messages):
+        async for token in model.generate(messages=messages, tools=TOOLS):
             full_response += token
             yield token
 
@@ -57,5 +60,24 @@ async def run(user_message: str, conversation_id: str, file_bytes: Optional[byte
     yield "[DONE]"
 
 
-async def create_conversation(conversation_id: str, title: str = None):
-    return await db.create_conversation(conversation_id, title)
+async def run_with_tools(messages: list[dict]) -> AsyncGenerator[str, None]:
+    for round in range(MAX_TOOL_ROUNDS):
+        response = await model.generate(messages, tools=TOOLS, stream=False)
+
+        if not response.get("tool_calls"):
+            async for token in model.stream_text(response["content"]):
+                yield token
+            return
+
+        for tool_call in response["tool_calls"]:
+            name = tool_call["function"]["name"]
+            args = json.loads(tool_call["function"]["arguments"])
+            yield f"\n[calling {name}...]\n"
+            result = await call_tool(name, args)
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call["id"],
+                "content": result
+            })
+
+    yield "\n[max tool rounds reached]"

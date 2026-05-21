@@ -5,6 +5,7 @@ import json
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from transformers import get_cosine_schedule_with_warmup
 from tqdm import tqdm
@@ -12,13 +13,13 @@ from tqdm import tqdm
 from model_config import get_config
 
 
-class Transformer(nn.Module):
+class MoEModel(nn.Module):
     def __init__(self, config: dict):
         super().__init__()
         self.config = config
         self.token_embedding = nn.Embedding(config["vocab_size"], config["hidden_size"])
         self.position_embedding = nn.Embedding(config["max_position_embeddings"], config["hidden_size"])
-        self.layers = nn.ModuleList([TransformerLayer(config) for _ in range(config["num_hidden_layers"])])
+        self.layers = nn.ModuleList([MoELayer(config) for _ in range(config["num_hidden_layers"])])
         self.norm = nn.RMSNorm(config["hidden_size"], eps=config["rms_norm_eps"])
         self.lm_head = nn.Linear(config["hidden_size"], config["vocab_size"], bias=False)
 
@@ -26,32 +27,69 @@ class Transformer(nn.Module):
         batch_size, seq_len = input_ids.shape
         positions = torch.arange(seq_len, device=input_ids.device).unsqueeze(0)
         x = self.token_embedding(input_ids) + self.position_embedding(positions)
+
+        all_router_logits = []
         for layer in self.layers:
-            x = layer(x, attention_mask)
+            x, router_logits = layer(x, attention_mask)
+            all_router_logits.append(router_logits)
+
         x = self.norm(x)
-        return self.lm_head(x)
+        return self.lm_head(x), all_router_logits
 
 
-class TransformerLayer(nn.Module):
+class MoELayer(nn.Module):
     def __init__(self, config: dict):
         super().__init__()
         hidden_size = config["hidden_size"]
         num_heads = config["num_attention_heads"]
         self.attn = nn.MultiheadAttention(hidden_size, num_heads, batch_first=True)
-        self.ff = nn.Sequential(
-            nn.Linear(hidden_size, config["intermediate_size"]),
-            nn.GELU(),
-            nn.Linear(config["intermediate_size"], hidden_size),
-        )
         self.norm1 = nn.RMSNorm(hidden_size, eps=config["rms_norm_eps"])
         self.norm2 = nn.RMSNorm(hidden_size, eps=config["rms_norm_eps"])
+
+        self.num_experts = config["num_experts"]
+        self.experts = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(hidden_size, config["expert_intermediate_size"]),
+                nn.GELU(),
+                nn.Linear(config["expert_intermediate_size"], hidden_size),
+            ) for _ in range(self.num_experts)
+        ])
+        self.router = nn.Linear(hidden_size, self.num_experts)
+        self.num_experts_per_token = config["num_experts_per_token"]
 
     def forward(self, x, attention_mask=None):
         attn_out, _, _ = self.attn(x, x, x, attn_mask=attention_mask)
         x = self.norm1(x + attn_out)
-        ff_out = self.ff(x)
-        x = self.norm2(x + ff_out)
-        return x
+
+        router_logits = self.router(x)
+        router_probs = F.softmax(router_logits, dim=-1)
+        topk_probs, topk_indices = torch.topk(router_probs, self.num_experts_per_token, dim=-1)
+
+        expert_out = torch.zeros_like(x)
+        for expert_idx in range(self.num_experts):
+            mask = (topk_indices == expert_idx)
+            if mask.any():
+                token_indices = mask.nonzero(as_tuple=True)
+                expert_input = x[token_indices[0], token_indices[1]]
+                expert_output = self.experts[expert_idx](expert_input)
+                expert_out.index_put_(token_indices, expert_output * topk_probs[mask].unsqueeze(-1))
+
+        x = self.norm2(x + expert_out)
+        return x, router_logits
+
+
+def compute_loss(logits, labels, router_logits, config):
+    ce_loss = F.cross_entropy(logits.view(-1, logits.size(-1)), labels.view(-1))
+    router_probs = F.softmax(router_logits, dim=-1)
+    expert_usage = router_probs.mean(dim=0)
+    target_usage = torch.ones_like(expert_usage) / config["num_experts"]
+    aux_loss = F.mse_loss(expert_usage, target_usage)
+    return ce_loss + config["router_aux_loss_coef"] * aux_loss
+
+
+def log_router_stats(router_logits, step: int):
+    probs = F.softmax(router_logits, dim=-1).mean(dim=0)
+    print(f"[Step {step}] Expert load: {[f'{p:.2%}' for p in probs.tolist()]}")
 
 
 def load_dataset(path: Path, max_length: int = 4096):
@@ -74,58 +112,75 @@ def collate(batch):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=str, default="1b")
+    parser.add_argument("--config", type=str, default="2b_moe")
     parser.add_argument("--data_path", type=str, required=True)
     parser.add_argument("--output_dir", type=str, default="./checkpoints")
     parser.add_argument("--resume_from_checkpoint", type=str, default=None)
-    parser.add_argument("--batch_size", type=int, default=8)
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=4)
+    parser.add_argument("--batch_size", type=int, default=4)
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=8)
     parser.add_argument("--learning_rate", type=float, default=3e-4)
-    parser.add_argument("--max_epochs", type=int, default=3)
+    parser.add_argument("--max_steps", type=int, default=None)
+    parser.add_argument("--smoke_test", action="store_true")
     parser.add_argument("--warmup_steps", type=int, default=2000)
+    parser.add_argument("--max_grad_norm", type=float, default=1.0)
     args = parser.parse_args()
 
     config = get_config(args.config)
     print(f"Training {args.config}: {config}")
 
     train_path = Path(args.data_path) / "train.jsonl"
-    eval_path = Path(args.data_path) / "eval.jsonl"
-
     train_data = load_dataset(train_path, config["max_position_embeddings"])
-    eval_data = load_dataset(eval_path, config["max_position_embeddings"])
-    print(f"Train: {len(train_data)}, Eval: {len(eval_data)}")
+    if args.smoke_test:
+        train_data = train_data[:max(1, len(train_data) // 100)]
+    print(f"Train: {len(train_data)} samples")
 
-    model = Transformer(config)
+    model = MoEModel(config)
+    if args.resume_from_checkpoint:
+        print(f"Resuming from {args.resume_from_checkpoint}")
+        ckpt = torch.load(args.resume_from_checkpoint, map_location="cpu")
+        model.load_state_dict(ckpt["model"])
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
+    model.gradient_checkpointing_enable()
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
-    total_steps = len(train_data) * args.max_epochs // args.batch_size
+    total_steps = args.max_steps if args.max_steps else (len(train_data) * 3 // args.batch_size)
     scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=args.warmup_steps, num_training_steps=total_steps)
 
     train_loader = DataLoader(train_data, batch_size=args.batch_size, shuffle=True, collate_fn=collate)
     os.makedirs(args.output_dir, exist_ok=True)
 
-    for epoch in range(args.max_epochs):
-        model.train()
-        pbar = tqdm(train_loader, desc=f"Epoch {epoch + 1}")
-        for i, batch in enumerate(pbar):
-            batch = batch.to(device)
-            logits = model(batch[:, :-1])
-            loss = nn.functional.cross_entropy(logits.reshape(-1, config["vocab_size"]), batch[:, 1:].reshape(-1), ignore_index=0)
-            loss = loss / args.gradient_accumulation_steps
-            loss.backward()
+    global_step = 0
+    model.train()
+    pbar = tqdm(train_loader, desc="Training")
 
-            if (i + 1) % args.gradient_accumulation_steps == 0:
-                optimizer.step()
-                scheduler.step()
-                optimizer.zero_grad()
+    for batch in pbar:
+        batch = batch.to(device)
+        logits, router_logits = model(batch[:, :-1])
+        loss = compute_loss(logits, batch[:, 1:], router_logits[-1], config)
+        loss = loss / args.gradient_accumulation_steps
+        loss.backward()
 
-            pbar.set_postfix({"loss": f"{loss.item() * args.gradient_accumulation_steps:.4f}"})
+        if (global_step + 1) % args.gradient_accumulation_steps == 0:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
+            optimizer.step()
+            scheduler.step()
+            optimizer.zero_grad()
 
-        ckpt_path = f"{args.output_dir}/checkpoint-{epoch + 1}.pt"
-        torch.save({"model": model.state_dict(), "config": config}, ckpt_path)
-        print(f"Saved: {ckpt_path}")
+        if global_step % 100 == 0:
+            actual_loss = loss.item() * args.gradient_accumulation_steps
+            pbar.set_postfix({"loss": f"{actual_loss:.4f}"})
+            log_router_stats(router_logits[-1], global_step)
+
+        if (global_step + 1) % 2000 == 0 and not args.smoke_test:
+            ckpt_path = f"{args.output_dir}/step-{global_step + 1}.pt"
+            torch.save({"model": model.state_dict(), "config": config, "step": global_step + 1}, ckpt_path)
+            print(f"Saved checkpoint: {ckpt_path}")
+
+        global_step += 1
+        if args.max_steps and global_step >= args.max_steps:
+            break
 
     torch.save({"model": model.state_dict(), "config": config}, f"{args.output_dir}/final.pt")
     print("Done!")

@@ -18,7 +18,7 @@ def train_tokenizer(files: list[str], vocab_size: int = 32000, output_dir: str =
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--corpus", type=str, required=True, help="Path to corpus txt")
+    parser.add_argument("--corpus", type=str, required=True)
     parser.add_argument("--vocab_size", type=int, default=32000)
     parser.add_argument("--output", type=str, default="training/tokenizer")
     args = parser.parse_args()

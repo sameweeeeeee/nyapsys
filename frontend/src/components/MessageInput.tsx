@@ -12,6 +12,7 @@ interface MessageInputProps {
 export function MessageInput({ onSend, onAttach, onRemoveFile, attachedFile, disabled }: MessageInputProps) {
   const [input, setInput] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault()
@@ -20,10 +21,24 @@ export function MessageInput({ onSend, onAttach, onRemoveFile, attachedFile, dis
     setInput('')
   }, [input, attachedFile, onSend])
 
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSubmit(e)
+    }
+  }, [handleSubmit])
+
   const handleFileSelect = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) { onAttach(file); if (fileInputRef.current) fileInputRef.current.value = '' }
   }, [onAttach])
+
+  const handleInput = useCallback(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 160) + 'px'
+    }
+  }, [])
 
   return (
     <form className="message-input-form" onSubmit={handleSubmit}>
@@ -31,9 +46,10 @@ export function MessageInput({ onSend, onAttach, onRemoveFile, attachedFile, dis
       <div className="input-container">
         <input type="file" ref={fileInputRef} onChange={handleFileSelect} accept="image/*,.pdf,.docx,.txt,.md,.csv,.json" style={{ display: 'none' }} />
         <button type="button" className="attach-btn" onClick={() => fileInputRef.current?.click()} disabled={disabled}>📎</button>
-        <input type="text" value={input} onChange={(e) => setInput(e.target.value)} placeholder="Type a message..." disabled={disabled} className="message-input" />
-        <button type="submit" className="send-btn" disabled={disabled || (!input.trim() && !attachedFile)}>➤</button>
+        <textarea ref={textareaRef} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown} onInput={handleInput} placeholder="Message Nyapsys…" disabled={disabled} className="message-input" rows={1} />
+        <button type="submit" className="send-btn" disabled={disabled || (!input.trim() && !attachedFile)}>→</button>
       </div>
+      <p className="input-hint">Nyapsys runs entirely on your Mac — your data never leaves.</p>
     </form>
   )
 }

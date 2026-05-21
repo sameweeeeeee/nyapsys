@@ -49,19 +49,13 @@ export async function* streamChat(message: string, conversationId: string, file?
   }
 }
 
-export async function fetchConversations(): Promise<Conversation[]> {
+export async function getConversations(): Promise<Conversation[]> {
   const response = await fetch(`${API_URL}/conversations`, { headers: { 'Authorization': `Bearer ${API_KEY}` } })
   if (!response.ok) throw new Error('Failed to fetch conversations')
   return response.json()
 }
 
-export async function fetchMessages(conversationId: string): Promise<Message[]> {
-  const response = await fetch(`${API_URL}/conversations/${conversationId}/messages`, { headers: { 'Authorization': `Bearer ${API_KEY}` } })
-  if (!response.ok) throw new Error('Failed to fetch messages')
-  return response.json()
-}
-
-export async function deleteConversation(conversationId: string): Promise<void> {
-  const response = await fetch(`${API_URL}/conversations/${conversationId}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${API_KEY}` } })
+export async function deleteConversation(id: string): Promise<void> {
+  const response = await fetch(`${API_URL}/conversations/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${API_KEY}` } })
   if (!response.ok) throw new Error('Failed to delete conversation')
 }

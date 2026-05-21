@@ -5,6 +5,7 @@ from fastapi.responses import StreamingResponse
 from app import db, rag, agent
 from app.health import router as health_router
 from app.schemas import IngestResponse, ConversationResponse, MessageResponse
+from app.tools import TOOLS, call_tool
 
 
 @asynccontextmanager
@@ -74,3 +75,15 @@ async def delete_conversation(conversation_id: str):
     rag.delete_by_conversation(conversation_id)
     await db.delete_conversation(conversation_id)
     return {"status": "deleted"}
+
+
+@app.get("/v1/tools")
+async def get_tools():
+    return {"tools": TOOLS}
+
+
+@app.post("/v1/tools/call")
+async def invoke_tool(name: str = Form(...), args: str = Form(...)):
+    import json
+    result = await call_tool(name, json.loads(args))
+    return {"result": result}

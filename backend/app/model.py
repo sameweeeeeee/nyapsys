@@ -9,9 +9,11 @@ N_PREDICT = int(os.getenv("N_PREDICT", "2048"))
 TIMEOUT = 120.0
 
 
-async def generate(messages: list[dict], max_tokens: int = N_PREDICT, temperature: float = TEMPERATURE, stream: bool = True) -> AsyncGenerator[str, None]:
+async def generate(messages: list[dict], max_tokens: int = N_PREDICT, temperature: float = TEMPERATURE, stream: bool = True, tools: list = None) -> AsyncGenerator[str, None]:
     url = f"{LLAMA_HOST}/v1/chat/completions"
     payload = {"model": "llama", "messages": messages, "max_tokens": max_tokens, "temperature": temperature, "stream": stream}
+    if tools:
+        payload["tools"] = tools
 
     async with httpx.AsyncClient(timeout=TIMEOUT) as client:
         async with client.stream("POST", url, json=payload) as response:

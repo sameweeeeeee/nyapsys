@@ -15,7 +15,7 @@ export function FilePreview({ file, onRemove }: FilePreviewProps) {
         </div>
       ) : (
         <div className="file-preview-badge">
-          <span className="file-icon">📎</span>
+          <span className="file-icon">📄</span>
           <span className="file-name">{file.name}</span>
         </div>
       )}

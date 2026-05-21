@@ -1,11 +1,8 @@
 name: Deploy Backend to Mac
-
 on:
   push:
     branches: [main]
-    paths:
-      - 'backend/**'
-
+    paths: ['backend/**']
 jobs:
   deploy:
     runs-on: ubuntu-latest

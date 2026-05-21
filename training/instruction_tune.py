@@ -17,11 +17,12 @@ def load_jsonl(path: Path) -> list:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--base_model", type=str, required=True)
-    parser.add_argument("--output_dir", type=str, required=True)
-    parser.add_argument("--lora_r", type=int, default=16)
-    parser.add_argument("--lora_alpha", type=int, default=32)
-    parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--data_path", type=str, default="training/data/tokenized")
+    parser.add_argument("--output_dir", type=str, required=True)
+    parser.add_argument("--lora_r", type=int, default=32)
+    parser.add_argument("--lora_alpha", type=int, default=64)
+    parser.add_argument("--epochs", type=int, default=3)
+    parser.add_argument("--learning_rate", type=float, default=2e-4)
     args = parser.parse_args()
 
     print(f"Loading {args.base_model}")
@@ -30,7 +31,7 @@ def main():
     tokenizer.pad_token = "<|pad|>"
 
     lora_config = LoraConfig(r=args.lora_r, lora_alpha=args.lora_alpha, lora_dropout=0.05,
-                              target_modules=["q_proj", "v_proj", "k_proj", "o_proj"], task_type=TaskType.CAUSAL_LM)
+                              target_modules=["q_proj", "v_proj", "k_proj", "o_proj", "gate"], task_type=TaskType.CAUSAL_LM)
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
 
@@ -38,8 +39,8 @@ def main():
     train_ds = Dataset.from_list(train_data)
 
     training_args = SFTConfig(output_dir=args.output_dir, num_train_epochs=args.epochs, per_device_train_batch_size=4,
-                               gradient_accumulation_steps=4, learning_rate=2e-4, fp16=True, logging_steps=10,
-                               save_strategy="steps", save_steps=100)
+                               gradient_accumulation_steps=4, learning_rate=args.learning_rate, bf16=True, logging_steps=10,
+                               save_strategy="steps", save_steps=100, max_seq_length=2048, packing=True)
 
     trainer = SFTTrainer(model=model, args=training_args, train_dataset=train_ds, tokenizer=tokenizer)
     print("Training...")

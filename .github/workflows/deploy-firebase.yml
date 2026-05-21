@@ -1,11 +1,8 @@
 name: Deploy Frontend to Firebase
-
 on:
   push:
     branches: [main]
-    paths:
-      - 'frontend/**'
-
+    paths: ['frontend/**']
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest

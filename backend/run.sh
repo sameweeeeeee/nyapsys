@@ -4,7 +4,7 @@ source ~/nyapsys/.env
 
 mkdir -p ~/volumes/models ~/volumes/chromadb ~/volumes/sqlite ~/nyapsys/logs
 
-llama-server --model ~/volumes/models/Nyapsys-1B.Q4_K_M.gguf --host 127.0.0.1 --port 8080 --ctx-size 4096 --n-predict 2048 --threads 4 --parallel 2 --cont-batching &
+llama-server --model ~/volumes/models/Nyapsys-2B-MoE.Q4_K_M.gguf --host 127.0.0.1 --port 8080 --ctx-size 4096 --n-predict 2048 --threads 4 --parallel 2 --cont-batching &
 LLAMA_PID=$!
 
 echo "Waiting for llama-server..."

@@ -4,7 +4,7 @@ chromadb
 pymupdf
 python-docx
 pillow
-httpx
+httpx>=0.27
 aiosqlite
 sentence-transformers
 pandas
