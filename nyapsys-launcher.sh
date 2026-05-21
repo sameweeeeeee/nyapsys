@@ -7,7 +7,7 @@
 
 set -e
 
-NYAPSYS_DIR="$HOME/nyapsys"
+NYAPSYS_DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG_DIR="$NYAPSYS_DIR/logs"
 ENV_FILE="$NYAPSYS_DIR/.env"
 MODEL_PATH="$HOME/volumes/models/Nyapsys-2B-MoE.Q4_K_M.gguf"
