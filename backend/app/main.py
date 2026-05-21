@@ -1,11 +1,29 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.responses import StreamingResponse
+import json
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
+from fastapi.responses import StreamingResponse, JSONResponse
+from pydantic import BaseModel
+from typing import Optional
 
 from app import db, rag, agent
 from app.health import router as health_router
 from app.schemas import IngestResponse, ConversationResponse, MessageResponse
 from app.tools import TOOLS, call_tool
+
+
+class ChatCompletionRequest(BaseModel):
+    model: str = "nyapsys"
+    messages: list[dict]
+    max_tokens: Optional[int] = None
+    temperature: Optional[float] = None
+    stream: bool = True
+    tools: Optional[list] = None
+
+
+class FeedbackRequest(BaseModel):
+    message_id: str
+    score: float
+    feedback: Optional[str] = None
 
 
 @asynccontextmanager
@@ -40,6 +58,28 @@ async def chat(message: str = Form(...), conversation_id: str = Form(...), file:
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@app.post("/v1/chat/completions")
+async def v1_chat_completions(req: ChatCompletionRequest):
+    messages = req.messages
+    max_tokens = req.max_tokens or 2048
+    temperature = req.temperature or 0.7
+
+    if req.stream:
+        async def event_stream():
+            full_response = ""
+            async for token in agent._stream_from_model(messages, max_tokens=max_tokens, temperature=temperature):
+                full_response += token
+                yield f"data: {json.dumps({'choices': [{'delta': {'content': token}}]})}\n\n"
+            yield f"data: {json.dumps({'choices': [{'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
+            yield "data: [DONE]\n\n"
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
+    else:
+        content = ""
+        async for token in agent._stream_from_model(messages, max_tokens=max_tokens, temperature=temperature):
+            content += token
+        return JSONResponse({"model": req.model, "choices": [{"message": {"role": "assistant", "content": content}, "finish_reason": "stop"}]})
 
 
 @app.post("/ingest", response_model=IngestResponse)
@@ -87,3 +127,9 @@ async def invoke_tool(name: str = Form(...), args: str = Form(...)):
     import json
     result = await call_tool(name, json.loads(args))
     return {"result": result}
+
+
+@app.post("/feedback")
+async def submit_feedback(req: FeedbackRequest):
+    await db.insert_eval(req.message_id, req.score, req.feedback)
+    return {"status": "recorded"}

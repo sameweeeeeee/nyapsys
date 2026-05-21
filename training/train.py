@@ -144,6 +144,8 @@ def main():
     model.to(device)
     model.gradient_checkpointing_enable()
 
+    scaler = torch.amp.GradScaler("cuda", enabled=torch.cuda.is_available())
+
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
     total_steps = args.max_steps if args.max_steps else (len(train_data) * 3 // args.batch_size)
     scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=args.warmup_steps, num_training_steps=total_steps)
@@ -157,14 +159,18 @@ def main():
 
     for batch in pbar:
         batch = batch.to(device)
-        logits, router_logits = model(batch[:, :-1])
-        loss = compute_loss(logits, batch[:, 1:], router_logits[-1], config)
-        loss = loss / args.gradient_accumulation_steps
-        loss.backward()
+        with torch.autocast("cuda", dtype=torch.bfloat16, enabled=torch.cuda.is_available()):
+            logits, router_logits = model(batch[:, :-1])
+            loss = compute_loss(logits, batch[:, 1:], router_logits[-1], config)
+            loss = loss / args.gradient_accumulation_steps
+
+        scaler.scale(loss).backward()
 
         if (global_step + 1) % args.gradient_accumulation_steps == 0:
+            scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
-            optimizer.step()
+            scaler.step(optimizer)
+            scaler.update()
             scheduler.step()
             optimizer.zero_grad()
 

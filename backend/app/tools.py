@@ -1,7 +1,7 @@
 import httpx
 import os
 import json
-import subprocess
+import asyncio
 import tempfile
 from datetime import datetime
 
@@ -68,11 +68,21 @@ async def call_tool(name: str, args: dict) -> str:
         return "Web search not configured. Set SERPAPI_KEY in .env"
 
     if name == "run_python":
+        timeout = int(os.getenv("TOOL_TIMEOUT_SECONDS", "10"))
         with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:
             f.write(args["code"])
             fname = f.name
-        result = subprocess.run(["python3", fname], capture_output=True, text=True, timeout=10)
-        return result.stdout or result.stderr
+        proc = await asyncio.create_subprocess_exec(
+            "python3", fname,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            return stdout.decode() or stderr.decode()
+        except asyncio.TimeoutError:
+            proc.kill()
+            return f"Error: Python execution timed out after {timeout}s"
 
     if name == "read_local_file":
         path = args["path"]

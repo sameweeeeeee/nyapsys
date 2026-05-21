@@ -8,7 +8,12 @@ from app.tools import TOOLS, call_tool
 
 MAX_HISTORY_MESSAGES = int(os.getenv("MAX_HISTORY_MESSAGES", "10"))
 MAX_TOOL_ROUNDS = int(os.getenv("MAX_TOOL_ROUNDS", "5"))
-SYSTEM_MESSAGE = "You are Nyapsys, a helpful AI assistant. You answer questions accurately, read and analyse files, and understand images. Be concise but thorough. If you are unsure, say so."
+SYSTEM_MESSAGE = "You are Nyapsys, a self-hosted AI assistant running locally on your Mac. You answer questions accurately, read and analyse files, and understand images. Be concise but thorough. If you are unsure, say so."
+
+
+async def _stream_from_model(messages: list[dict], max_tokens: int = 2048, temperature: float = 0.7) -> AsyncGenerator[str, None]:
+    async for token in model.generate(messages=messages, max_tokens=max_tokens, temperature=temperature):
+        yield token
 
 
 async def run(user_message: str, conversation_id: str, file_bytes: Optional[bytes] = None,
@@ -49,7 +54,7 @@ async def run(user_message: str, conversation_id: str, file_bytes: Optional[byte
             yield token
     else:
         messages.append({"role": "user", "content": user_message})
-        async for token in model.generate(messages=messages, tools=TOOLS):
+        async for token in _run_with_tool_loop(messages):
             full_response += token
             yield token
 
@@ -60,16 +65,18 @@ async def run(user_message: str, conversation_id: str, file_bytes: Optional[byte
     yield "[DONE]"
 
 
-async def run_with_tools(messages: list[dict]) -> AsyncGenerator[str, None]:
-    for round in range(MAX_TOOL_ROUNDS):
-        response = await model.generate(messages, tools=TOOLS, stream=False)
+async def _run_with_tool_loop(messages: list[dict]) -> AsyncGenerator[str, None]:
+    for round_idx in range(MAX_TOOL_ROUNDS):
+        response_text = ""
+        async for token in model.generate(messages=messages, tools=TOOLS):
+            response_text += token
+            yield token
 
-        if not response.get("tool_calls"):
-            async for token in model.stream_text(response["content"]):
-                yield token
+        tool_calls = model.extract_tool_calls(response_text)
+        if not tool_calls:
             return
 
-        for tool_call in response["tool_calls"]:
+        for tool_call in tool_calls:
             name = tool_call["function"]["name"]
             args = json.loads(tool_call["function"]["arguments"])
             yield f"\n[calling {name}...]\n"

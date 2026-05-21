@@ -6,7 +6,7 @@ brew install llama.cpp python@3.11 git wget
 pip3.11 install -r backend/requirements.txt
 
 mkdir -p ~/volumes/models ~/volumes/chromadb ~/volumes/sqlite
-[ -d ~/nyapsys ] || git clone https://github.com/YOUR_USER/nyapsys ~/nyapsys
+[ -d ~/nyapsys ] || git clone https://github.com/YOUR_USERNAME/nyapsys ~/nyapsys
 
 bash ~/nyapsys/scripts/download_model.sh
 

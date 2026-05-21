@@ -1,5 +1,8 @@
 import os
-from typing import AsyncGenerator
+import re
+import json
+from typing import AsyncGenerator, Optional
+
 import httpx
 
 
@@ -8,8 +11,37 @@ TEMPERATURE = float(os.getenv("TEMPERATURE", "0.7"))
 N_PREDICT = int(os.getenv("N_PREDICT", "2048"))
 TIMEOUT = 120.0
 
+_last_tool_calls: Optional[list] = None
+
+
+def extract_tool_calls(text: str) -> list:
+    pattern = r'<\|tool_call\|>\s*(\{.*?\})\s*<\|end_tool_call\|>'
+    matches = re.findall(pattern, text, re.DOTALL)
+    calls = []
+    for i, m in enumerate(matches):
+        try:
+            data = json.loads(m)
+            calls.append({
+                "id": f"call_{i}",
+                "type": "function",
+                "function": {"name": data["name"], "arguments": json.dumps(data.get("arguments", {}))}
+            })
+        except:
+            continue
+    return calls
+
+
+def get_last_tool_calls() -> Optional[list]:
+    global _last_tool_calls
+    calls = _last_tool_calls
+    _last_tool_calls = None
+    return calls
+
 
 async def generate(messages: list[dict], max_tokens: int = N_PREDICT, temperature: float = TEMPERATURE, stream: bool = True, tools: list = None) -> AsyncGenerator[str, None]:
+    global _last_tool_calls
+    _last_tool_calls = None
+
     url = f"{LLAMA_HOST}/v1/chat/completions"
     payload = {"model": "llama", "messages": messages, "max_tokens": max_tokens, "temperature": temperature, "stream": stream}
     if tools:
@@ -23,10 +55,14 @@ async def generate(messages: list[dict], max_tokens: int = N_PREDICT, temperatur
                     data = line[6:]
                     if data == "[DONE]":
                         break
-                    import json
                     try:
                         chunk = json.loads(data)
-                        content = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                        choice = chunk.get("choices", [{}])[0]
+                        delta = choice.get("delta", {})
+                        content = delta.get("content", "")
+                        tool_calls = delta.get("tool_calls")
+                        if tool_calls:
+                            _last_tool_calls = tool_calls
                         if content:
                             yield content
                     except:
@@ -47,7 +83,6 @@ async def generate_with_image(text: str, image_b64: str, media_type: str = "imag
                         data = line[6:]
                         if data == "[DONE]":
                             break
-                        import json
                         try:
                             chunk = json.loads(data)
                             content = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")

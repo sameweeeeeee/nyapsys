@@ -67,6 +67,31 @@ def format_custom(example: dict) -> dict | None:
     return {"text": filtered} if filtered else None
 
 
+def load_dataset_samples(config, target_count: int) -> list:
+    if config.hf_id == "local":
+        if not CUSTOM_DATA_PATH.exists():
+            return []
+        with open(CUSTOM_DATA_PATH) as f:
+            data = [json.loads(line) for line in f]
+        return [r for r in (format_custom(d) for d in data) if r]
+
+    formatted = []
+    try:
+        data = load_dataset(config.hf_id, split="train", streaming=True)
+        for i, ex in enumerate(data):
+            if i > target_count * 3:
+                break
+            text = ex.get("text", "")
+            if not text:
+                continue
+            filtered = filter_and_truncate(text)
+            if filtered:
+                formatted.append({"text": filtered})
+    except Exception as e:
+        print(f"  Error loading {config.hf_id}: {e}")
+    return formatted
+
+
 def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     all_train_data = []
@@ -74,47 +99,29 @@ def main():
     total_tokens = 0
 
     print(f"Target pretrain tokens: {TARGET_PRETRAIN_TOKENS:,}")
+    print(f"{'Dataset':<25} {'Mix%':>6} {'Samples':>10}")
+    print("-" * 45)
 
     for config in PRETRAIN_DATASETS:
-        print(f"\nProcessing {config.name} ({config.hf_id})...")
+        target_count = int(TARGET_PRETRAIN_TOKENS * config.mix_percent / 100 / 5)
+        samples = load_dataset_samples(config, target_count)
+        print(f"  {config.name:<23} {config.mix_percent:>5.0f}% {len(samples):>10,}")
 
-        if config.hf_id == "local":
-            if not CUSTOM_DATA_PATH.exists():
-                print(f"  Skipping: {CUSTOM_DATA_PATH} not found")
-                continue
-            with open(CUSTOM_DATA_PATH) as f:
-                data = [json.loads(line) for line in f]
-            formatted = [r for r in (format_custom(d) for d in data) if r]
-        else:
-            try:
-                data = load_dataset(config.hf_id, split="train", streaming=True)
-                formatted = []
-                for i, ex in enumerate(data):
-                    if i > 50000:
-                        break
-                    text = ex.get("text", "")
-                    if not text:
-                        continue
-                    filtered = filter_and_truncate(text)
-                    if filtered:
-                        formatted.append({"text": filtered})
-            except Exception as e:
-                print(f"  Error loading {config.hf_id}: {e}")
-                continue
+        if not samples:
+            print(f"  Skipping: no samples loaded")
+            continue
 
-        print(f"  Raw: {len(formatted)} samples")
-        formatted = deduplicate_with_minhash(formatted)
-        print(f"  After dedup: {len(formatted)} samples")
+        samples = deduplicate_with_minhash(samples)
+        print(f"  After dedup: {len(samples):,}")
 
-        random.shuffle(formatted)
-        split = int(len(formatted) * TRAIN_EVAL_SPLIT)
-        all_train_data.extend(formatted[:split])
-        all_eval_data.extend(formatted[split:])
+        random.shuffle(samples)
+        split = int(len(samples) * TRAIN_EVAL_SPLIT)
+        all_train_data.extend(samples[:split])
+        all_eval_data.extend(samples[split:])
 
-        sample_tokens = sum(len(s["text"].split()) for s in formatted[:100])
-        estimated_tokens = int(sample_tokens / 100 * len(formatted))
+        sample_tokens = sum(len(s["text"].split()) for s in samples[:100])
+        estimated_tokens = int(sample_tokens / 100 * len(samples))
         total_tokens += estimated_tokens
-        print(f"  Estimated tokens: {estimated_tokens:,}")
 
     random.shuffle(all_train_data)
     random.shuffle(all_eval_data)
