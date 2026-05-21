@@ -3,7 +3,7 @@ import { MessageBubble } from '../components/MessageBubble'
 import { MessageInput } from '../components/MessageInput'
 
 export function ChatWindow() {
-  const { messages, conversations, conversationId, isLoading, error, attachedFile, sidebarOpen, setSidebarOpen, sendMessage, selectConversation, startNewConversation, removeConversation, attachFile, removeFile, messagesEndRef } = useChat()
+  const { messages, conversations, conversationId, isLoading, error, attachedFile, sidebarOpen, setSidebarOpen, inputText, setInputText, sendMessage, selectConversation, startNewConversation, removeConversation, attachFile, removeFile, messagesEndRef } = useChat()
   const isEmpty = messages.length === 0
 
   const starterPills = [
@@ -51,7 +51,7 @@ export function ChatWindow() {
               <p className="empty-subtitle">Ask anything, upload a file, or share an image. Nyapsys runs entirely on your Mac.</p>
               <div className="empty-pills">
                 {starterPills.map(pill => (
-                  <button key={pill.label} className="empty-pill" onClick={() => sendMessage(pill.text)}>{pill.label}</button>
+                  <button key={pill.label} className="empty-pill" onClick={() => setInputText(pill.text)}>{pill.label}</button>
                 ))}
               </div>
             </div>
@@ -74,7 +74,7 @@ export function ChatWindow() {
         </div>
       </main>
 
-      <MessageInput onSend={sendMessage} onAttach={attachFile} onRemoveFile={removeFile} attachedFile={attachedFile} disabled={isLoading} />
+      <MessageInput onSend={sendMessage} onAttach={attachFile} onRemoveFile={removeFile} attachedFile={attachedFile} disabled={isLoading} value={inputText} onChange={setInputText} />
     </>
   )
 }

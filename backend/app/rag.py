@@ -11,30 +11,38 @@ RAG_SCORE_THRESHOLD = float(os.getenv("RAG_SCORE_THRESHOLD", "0.4"))
 
 client = None
 collection = None
-embedding_model = None
+_embedding_model = None
+
+
+def _get_embedding_model():
+    global _embedding_model
+    if _embedding_model is None:
+        _embedding_model = SentenceTransformer(EMBEDDING_MODEL)
+    return _embedding_model
 
 
 def init_collection():
-    global client, collection, embedding_model
-    client = chromadb.Client(settings=chromadb.config.Settings(chroma_server_host="127.0.0.1", chroma_server_http_port=8001))
+    global client, collection
+    client = chromadb.HttpClient(host="127.0.0.1", port=8001)
     try:
         collection = client.get_collection("nyapsys_kb")
-    except:
+    except Exception:
         collection = client.create_collection("nyapsys_kb", metadata={"hnsw:space": "cosine"})
-    embedding_model = SentenceTransformer(EMBEDDING_MODEL)
 
 
 def embed_and_upsert(chunks, metadatas, ids):
-    if not collection or not embedding_model:
+    if not collection:
         raise RuntimeError("Collection not initialized")
-    embeddings = embedding_model.encode(chunks, show_progress_bar=False)
+    model = _get_embedding_model()
+    embeddings = model.encode(chunks, show_progress_bar=False)
     collection.upsert(embeddings=embeddings.tolist(), documents=chunks, metadatas=metadatas, ids=ids)
 
 
 def query(text, conversation_id=None, top_k=RAG_TOP_K):
-    if not collection or not embedding_model:
+    if not collection:
         raise RuntimeError("Collection not initialized")
-    query_embedding = embedding_model.encode([text], show_progress_bar=False)
+    model = _get_embedding_model()
+    query_embedding = model.encode([text], show_progress_bar=False)
     where = {"conversation_id": conversation_id} if conversation_id else None
     results = collection.query(query_embeddings=query_embedding.tolist(), n_results=top_k, where=where)
     matches = []

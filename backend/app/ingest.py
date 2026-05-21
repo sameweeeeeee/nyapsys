@@ -3,6 +3,7 @@ import io
 import uuid
 import base64
 from datetime import datetime
+from dataclasses import dataclass
 
 import fitz
 from docx import Document
@@ -14,6 +15,21 @@ from app import db, rag
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "512"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "64"))
 MIN_CHUNK_TOKENS = 50
+
+
+@dataclass
+class IngestResult:
+    file_id: str
+    chunk_count: int
+    filename: str
+
+
+@dataclass
+class ImageResult:
+    file_id: str
+    image_b64: str
+    media_type: str
+    filename: str
 
 
 def is_image_type(file_type: str) -> bool:
@@ -45,7 +61,7 @@ def chunk_text(text: str) -> list[str]:
     return chunks
 
 
-async def ingest_file(file_bytes: bytes, filename: str, file_type: str, conversation_id: str):
+async def ingest_file(file_bytes: bytes, filename: str, file_type: str, conversation_id: str) -> IngestResult:
     text = extract_text(file_bytes, file_type)
     chunks = chunk_text(text)
     file_id = str(uuid.uuid4())
@@ -60,14 +76,10 @@ async def ingest_file(file_bytes: bytes, filename: str, file_type: str, conversa
         ids = []
 
     await db.insert_file(file_id, conversation_id, filename, file_type, len(file_bytes), len(chunks), ids)
-    from dataclasses import dataclass
-    @dataclass
-    class Result:
-        file_id: str; chunk_count: int; filename: str
-    return Result(file_id, len(chunks), filename)
+    return IngestResult(file_id, len(chunks), filename)
 
 
-async def ingest_image(file_bytes: bytes, filename: str, file_type: str, conversation_id: str):
+async def ingest_image(file_bytes: bytes, filename: str, file_type: str, conversation_id: str) -> ImageResult:
     img = Image.open(io.BytesIO(file_bytes))
     if img.mode != "RGB":
         img = img.convert("RGB")
@@ -81,8 +93,4 @@ async def ingest_image(file_bytes: bytes, filename: str, file_type: str, convers
     if file_type.lower() == "png": media_type = "image/png"
     elif file_type.lower() == "webp": media_type = "image/webp"
     elif file_type.lower() == "gif": media_type = "image/gif"
-    from dataclasses import dataclass
-    @dataclass
-    class Result:
-        file_id: str; image_b64: str; media_type: str
-    return Result(file_id, image_b64, media_type)
+    return ImageResult(file_id, image_b64, media_type, filename)

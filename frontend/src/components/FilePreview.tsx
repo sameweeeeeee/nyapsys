@@ -1,17 +1,10 @@
-import Image from 'next/image'
-
-interface FilePreviewProps {
-  file: File
-  onRemove: () => void
-}
-
-export function FilePreview({ file, onRemove }: FilePreviewProps) {
+export function FilePreview({ file, onRemove }: { file: File; onRemove: () => void }) {
   const isImage = file.type.startsWith('image/')
   return (
     <div className="file-preview">
       {isImage ? (
         <div className="file-preview-image">
-          <Image src={URL.createObjectURL(file)} alt={file.name} width={80} height={80} style={{ objectFit: 'cover' }} />
+          <img src={URL.createObjectURL(file)} alt={file.name} width={80} height={80} style={{ objectFit: 'cover', display: 'block' }} />
         </div>
       ) : (
         <div className="file-preview-badge">

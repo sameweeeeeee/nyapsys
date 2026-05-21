@@ -48,25 +48,28 @@ async def generate(messages: list[dict], max_tokens: int = N_PREDICT, temperatur
         payload["tools"] = tools
 
     async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-        async with client.stream("POST", url, json=payload) as response:
-            response.raise_for_status()
-            async for line in response.aiter_lines():
-                if line.startswith("data: "):
-                    data = line[6:]
-                    if data == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(data)
-                        choice = chunk.get("choices", [{}])[0]
-                        delta = choice.get("delta", {})
-                        content = delta.get("content", "")
-                        tool_calls = delta.get("tool_calls")
-                        if tool_calls:
-                            _last_tool_calls = tool_calls
-                        if content:
-                            yield content
-                    except:
-                        continue
+        try:
+            async with client.stream("POST", url, json=payload) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if line.startswith("data: "):
+                        data = line[6:]
+                        if data == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data)
+                            choice = chunk.get("choices", [{}])[0]
+                            delta = choice.get("delta", {})
+                            content = delta.get("content", "")
+                            tool_calls = delta.get("tool_calls")
+                            if tool_calls:
+                                _last_tool_calls = tool_calls
+                            if content:
+                                yield content
+                        except:
+                            continue
+        except httpx.ReadTimeout:
+            yield "\n\n[Error: Request timed out.]"
 
 
 async def generate_with_image(text: str, image_b64: str, media_type: str = "image/jpeg", max_tokens: int = N_PREDICT, temperature: float = TEMPERATURE) -> AsyncGenerator[str, None]:

@@ -59,3 +59,9 @@ export async function deleteConversation(id: string): Promise<void> {
   const response = await fetch(`${API_URL}/conversations/${id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${API_KEY}` } })
   if (!response.ok) throw new Error('Failed to delete conversation')
 }
+
+export async function getMessages(conversationId: string): Promise<Message[]> {
+  const response = await fetch(`${API_URL}/conversations/${conversationId}/messages`, { headers: { 'Authorization': `Bearer ${API_KEY}` } })
+  if (!response.ok) throw new Error('Failed to fetch messages')
+  return response.json()
+}

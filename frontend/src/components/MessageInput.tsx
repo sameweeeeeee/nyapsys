@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, ChangeEvent } from 'react'
+import { useRef, useCallback, ChangeEvent } from 'react'
 import { FilePreview } from './FilePreview'
 
 interface MessageInputProps {
@@ -7,19 +7,20 @@ interface MessageInputProps {
   onRemoveFile: () => void
   attachedFile: File | null
   disabled?: boolean
+  value: string
+  onChange: (value: string) => void
 }
 
-export function MessageInput({ onSend, onAttach, onRemoveFile, attachedFile, disabled }: MessageInputProps) {
-  const [input, setInput] = useState('')
+export function MessageInput({ onSend, onAttach, onRemoveFile, attachedFile, disabled, value, onChange }: MessageInputProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault()
-    if (!input.trim() && !attachedFile) return
-    onSend(input)
-    setInput('')
-  }, [input, attachedFile, onSend])
+    if (!value.trim() && !attachedFile) return
+    onSend(value)
+    onChange('')
+  }, [value, attachedFile, onSend, onChange])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -46,8 +47,8 @@ export function MessageInput({ onSend, onAttach, onRemoveFile, attachedFile, dis
       <div className="input-container">
         <input type="file" ref={fileInputRef} onChange={handleFileSelect} accept="image/*,.pdf,.docx,.txt,.md,.csv,.json" style={{ display: 'none' }} />
         <button type="button" className="attach-btn" onClick={() => fileInputRef.current?.click()} disabled={disabled}>📎</button>
-        <textarea ref={textareaRef} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown} onInput={handleInput} placeholder="Message Nyapsys…" disabled={disabled} className="message-input" rows={1} />
-        <button type="submit" className="send-btn" disabled={disabled || (!input.trim() && !attachedFile)}>→</button>
+        <textarea ref={textareaRef} value={value} onChange={(e) => onChange(e.target.value)} onKeyDown={handleKeyDown} onInput={handleInput} placeholder="Message Nyapsys…" disabled={disabled} className="message-input" rows={1} />
+        <button type="submit" className="send-btn" disabled={disabled || (!value.trim() && !attachedFile)}>→</button>
       </div>
       <p className="input-hint">Nyapsys runs entirely on your Mac — your data never leaves.</p>
     </form>

@@ -73,7 +73,7 @@ async def call_tool(name: str, args: dict) -> str:
             f.write(args["code"])
             fname = f.name
         proc = await asyncio.create_subprocess_exec(
-            "python3", fname,
+            "python3.11", fname,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )

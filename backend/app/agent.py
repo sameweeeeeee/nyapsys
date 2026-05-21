@@ -72,13 +72,16 @@ async def _run_with_tool_loop(messages: list[dict]) -> AsyncGenerator[str, None]
             response_text += token
             yield token
 
-        tool_calls = model.extract_tool_calls(response_text)
+        tool_calls = model.get_last_tool_calls()
         if not tool_calls:
             return
 
         for tool_call in tool_calls:
             name = tool_call["function"]["name"]
-            args = json.loads(tool_call["function"]["arguments"])
+            try:
+                args = json.loads(tool_call["function"]["arguments"])
+            except:
+                args = {}
             yield f"\n[calling {name}...]\n"
             result = await call_tool(name, args)
             messages.append({

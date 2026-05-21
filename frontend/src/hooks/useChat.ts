@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { streamChat, getConversations, deleteConversation, Message, Conversation } from '../lib/api'
+import { streamChat, getConversations, deleteConversation, getMessages, Message, Conversation } from '../lib/api'
 import { v4 as uuidv4 } from 'uuid'
 
 interface ChatMessage extends Message {
@@ -14,6 +14,7 @@ export function useChat() {
   const [error, setError] = useState<string | null>(null)
   const [attachedFile, setAttachedFile] = useState<File | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [inputText, setInputText] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = useCallback(() => {
@@ -31,11 +32,14 @@ export function useChat() {
 
   useEffect(() => { loadConversations() }, [loadConversations])
 
-  const selectConversation = useCallback((convId: string) => {
+  const selectConversation = useCallback(async (convId: string) => {
     setConversationId(convId)
-    setMessages([])
     setError(null)
     setSidebarOpen(false)
+    try {
+      const msgs = await getMessages(convId)
+      setMessages(msgs.map(m => ({ ...m, isStreaming: false })))
+    } catch (err) { console.error('Failed to load messages:', err) }
   }, [])
 
   const startNewConversation = useCallback(() => {
@@ -44,6 +48,7 @@ export function useChat() {
     setMessages([])
     setError(null)
     setAttachedFile(null)
+    setInputText('')
     setSidebarOpen(false)
   }, [])
 
@@ -86,5 +91,5 @@ export function useChat() {
   const attachFile = useCallback((file: File) => { setAttachedFile(file) }, [])
   const removeFile = useCallback(() => { setAttachedFile(null) }, [])
 
-  return { messages, conversations, conversationId, isLoading, error, attachedFile, sidebarOpen, setSidebarOpen, sendMessage, selectConversation, startNewConversation, removeConversation, attachFile, removeFile, messagesEndRef }
+  return { messages, conversations, conversationId, isLoading, error, attachedFile, sidebarOpen, setSidebarOpen, inputText, setInputText, sendMessage, selectConversation, startNewConversation, removeConversation, attachFile, removeFile, messagesEndRef }
 }
