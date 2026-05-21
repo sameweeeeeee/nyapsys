@@ -23,7 +23,7 @@ die()     { fail "$1"; echo ""; exit 1; }
 
 # ── Config ───────────────────────────────────────────────
 GCP_PROJECT="${GCP_PROJECT:-nyapsys}"
-GCP_ZONE="${GCP_ZONE:-us-central1-a}"
+GCP_ZONE="${GCP_ZONE:-asia-southeast1-a}"
 INSTANCE_NAME="${INSTANCE_NAME:-nyapsys-training}"
 GCS_BUCKET="${GCS_BUCKET:-nyapsys-training}"
 MODEL_BUCKET="${MODEL_BUCKET:-nyapsys-models}"
