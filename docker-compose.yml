@@ -1,0 +1,48 @@
+services:
+  chromadb:
+    image: chromadb/chroma:latest
+    ports: ["8001:8000"]
+    volumes:
+      - chromadb_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+    restart: unless-stopped
+
+  llama:
+    image: nvidia/cuda:12.4.1-runtime-ubuntu22.04
+    command: >
+      /bin/sh -c "
+        wget -q https://github.com/ggml-org/llama.cpp/releases/download/b4467/llama-b4467-bin-ubuntu-x64.zip -O /tmp/llama.zip &&
+        unzip /tmp/llama.zip -d /llama &&
+        /llama/llama-server --model /models/model.gguf --host 0.0.0.0 --port 8080 --ctx-size 4096 --n-predict 2048 --threads 4 --parallel 2 --cont-batching
+      "
+    ports: ["8080:8080"]
+    volumes:
+      - ~/volumes/models:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  backend:
+    build: .
+    ports: ["8000:8000"]
+    volumes:
+      - ~/volumes/sqlite:/volumes/sqlite
+      - ~/volumes/models:/volumes/models
+    environment:
+      - LLAMA_HOST=http://llama:8080
+      - CHROMA_HOST=http://chromadb:8000
+      - SQLITE_PATH=/volumes/sqlite/nyapsys.db
+      - MODEL_PATH=/volumes/models/Nyapsys-2B-MoE.Q4_K_M.gguf
+    depends_on:
+      - chromadb
+      - llama
+    restart: unless-stopped
+
+volumes:
+  chromadb_data:

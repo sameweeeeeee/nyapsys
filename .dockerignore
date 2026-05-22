@@ -1,0 +1,8 @@
+node_modules/
+.next/
+.git/
+*.gguf
+*.pt
+__pycache__/
+.env
+volumes/
