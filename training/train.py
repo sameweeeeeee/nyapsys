@@ -363,9 +363,22 @@ def main():
 
     model = MoEModel(config)
     if args.resume_from_checkpoint:
-        print(f"Resuming from {args.resume_from_checkpoint}")
-        ckpt = torch.load(args.resume_from_checkpoint, map_location="cpu")
-        model.load_state_dict(ckpt["model"])
+        if args.resume_from_checkpoint.lower() == "latest":
+            import subprocess
+            result = subprocess.run(
+                ["gsutil", "ls", f"{args.output_dir}step-*.pt"],
+                capture_output=True, text=True, timeout=30
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                latest = sorted(result.stdout.strip().split())[-1]
+                args.resume_from_checkpoint = latest
+            else:
+                print("No checkpoints found, starting fresh")
+                args.resume_from_checkpoint = None
+        if args.resume_from_checkpoint:
+            print(f"Resuming from {args.resume_from_checkpoint}")
+            ckpt = torch.load(args.resume_from_checkpoint, map_location="cpu")
+            model.load_state_dict(ckpt["model"])
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
