@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import contextvars
 from typing import AsyncGenerator, Optional
 
 import httpx
@@ -11,7 +12,7 @@ TEMPERATURE = float(os.getenv("TEMPERATURE", "0.7"))
 N_PREDICT = int(os.getenv("N_PREDICT", "2048"))
 TIMEOUT = 120.0
 
-_last_tool_calls: Optional[list] = None
+_tool_calls_var: contextvars.ContextVar[Optional[list]] = contextvars.ContextVar('tool_calls', default=None)
 
 
 def extract_tool_calls(text: str) -> list:
@@ -26,21 +27,19 @@ def extract_tool_calls(text: str) -> list:
                 "type": "function",
                 "function": {"name": data["name"], "arguments": json.dumps(data.get("arguments", {}))}
             })
-        except:
+        except Exception:
             continue
     return calls
 
 
 def get_last_tool_calls() -> Optional[list]:
-    global _last_tool_calls
-    calls = _last_tool_calls
-    _last_tool_calls = None
+    calls = _tool_calls_var.get()
+    _tool_calls_var.set(None)
     return calls
 
 
 async def generate(messages: list[dict], max_tokens: int = N_PREDICT, temperature: float = TEMPERATURE, stream: bool = True, tools: list = None) -> AsyncGenerator[str, None]:
-    global _last_tool_calls
-    _last_tool_calls = None
+    _tool_calls_var.set(None)
 
     url = f"{LLAMA_HOST}/v1/chat/completions"
     payload = {"model": "llama", "messages": messages, "max_tokens": max_tokens, "temperature": temperature, "stream": stream}
@@ -63,10 +62,10 @@ async def generate(messages: list[dict], max_tokens: int = N_PREDICT, temperatur
                             content = delta.get("content", "")
                             tool_calls = delta.get("tool_calls")
                             if tool_calls:
-                                _last_tool_calls = tool_calls
+                                _tool_calls_var.set(tool_calls)
                             if content:
                                 yield content
-                        except:
+                        except Exception:
                             continue
         except httpx.ReadTimeout:
             yield "\n\n[Error: Request timed out.]"
@@ -91,7 +90,7 @@ async def generate_with_image(text: str, image_b64: str, media_type: str = "imag
                             content = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
                             if content:
                                 yield content
-                        except:
+                        except json.JSONDecodeError:
                             continue
         except httpx.ReadTimeout:
             yield "\n\n[Error: Request timed out.]"

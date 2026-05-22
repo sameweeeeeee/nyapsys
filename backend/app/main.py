@@ -14,6 +14,7 @@ from app.tools import TOOLS, call_tool
 
 
 API_SECRET_KEY = os.getenv("API_SECRET_KEY", "")
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*")
 
 
 class ChatCompletionRequest(BaseModel):
@@ -53,7 +54,7 @@ app.include_router(health_router, dependencies=[Depends(verify_auth)])
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS.split(","),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

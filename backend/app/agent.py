@@ -59,15 +59,14 @@ async def run(user_message: str, conversation_id: str, file_bytes: Optional[byte
             async for token in _run_with_tool_loop(messages):
                 full_response += token
                 yield token
+        await db.insert_message(conversation_id, "user", user_message, has_file=bool(file_bytes), has_image=bool(image_result))
+        await db.insert_message(conversation_id, "assistant", full_response)
+        await db.update_conversation(conversation_id)
     except Exception as e:
         stream_error = str(e)
         if not full_response:
             full_response = f"Error: {stream_error}"
             yield f"\n[Error: {stream_error}]\n"
-    finally:
-        await db.insert_message(conversation_id, "user", user_message, has_file=bool(file_bytes), has_image=bool(image_result))
-        await db.insert_message(conversation_id, "assistant", full_response)
-        await db.update_conversation(conversation_id)
 
     yield "[DONE]"
 
@@ -87,7 +86,7 @@ async def _run_with_tool_loop(messages: list[dict]) -> AsyncGenerator[str, None]
             name = tool_call["function"]["name"]
             try:
                 args = json.loads(tool_call["function"]["arguments"])
-            except:
+            except json.JSONDecodeError:
                 args = {}
             yield f"\n[calling {name}...]\n"
             result = await call_tool(name, args)
