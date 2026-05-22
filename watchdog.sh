@@ -19,6 +19,7 @@ while true; do
       --batch_size 2 \
       --gradient_accumulation_steps 8 \
       --num_workers 0 \
+      --max_steps 994000 \
       > /tmp/train.log 2>&1 &
   fi
   sleep 120

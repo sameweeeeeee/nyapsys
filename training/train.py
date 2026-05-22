@@ -277,7 +277,7 @@ def pre_tokenize_dataset(path: Path, max_length: int = 4096, vocab_size: int = 3
     lengths_arr = np.array(lengths, dtype=np.int32)
     total_tokens = lengths_arr.sum()
     
-    flat_tokens = np.empty(total_tokens, dtype=np.int32)
+    flat_tokens = np.memmap(tokens_path, dtype=np.int32, mode='write', shape=(total_tokens,))
     offset = 0
     for cf in chunk_files:
         data = np.load(cf)
@@ -285,8 +285,9 @@ def pre_tokenize_dataset(path: Path, max_length: int = 4096, vocab_size: int = 3
         flat_tokens[offset:offset + n] = data
         offset += n
         cf.unlink()
+    flat_tokens.flush()
+    del flat_tokens
     
-    np.save(tokens_path, flat_tokens)
     np.save(lengths_path, lengths_arr)
     print(f"  Saved {total_tokens * 4 / 1e9:.1f}GB tokens, {len(lengths):,} sequences")
     
@@ -341,6 +342,7 @@ def main():
     parser.add_argument("--gradient_accumulation_steps", type=int, default=8)
     parser.add_argument("--learning_rate", type=float, default=3e-4)
     parser.add_argument("--max_steps", type=int, default=None)
+    parser.add_argument("--dataset_limit", type=int, default=None)
     parser.add_argument("--smoke_test", action="store_true")
     parser.add_argument("--warmup_steps", type=int, default=2000)
     parser.add_argument("--max_grad_norm", type=float, default=1.0)
@@ -357,7 +359,7 @@ def main():
     if args.smoke_test:
         train_data = load_dataset(train_path, config["max_position_embeddings"], limit=10000)
     else:
-        tokens, lengths = pre_tokenize_dataset(train_path, config["max_position_embeddings"], config["vocab_size"], limit=2000000)
+        tokens, lengths = pre_tokenize_dataset(train_path, config["max_position_embeddings"], config["vocab_size"], limit=args.dataset_limit)
         train_data = MMapDataset(tokens, lengths)
     print(f"Train: {len(train_data)} samples")
 
