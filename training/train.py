@@ -277,21 +277,22 @@ def pre_tokenize_dataset(path: Path, max_length: int = 4096, vocab_size: int = 3
     lengths_arr = np.array(lengths, dtype=np.int32)
     total_tokens = lengths_arr.sum()
     
-    flat_tokens = np.memmap(tokens_path, dtype=np.int32, mode='write', shape=(total_tokens,))
+    from numpy.lib.format import open_memmap
+    mm = open_memmap(tokens_path, dtype=np.int32, mode='w+', shape=(total_tokens,))
     offset = 0
     for cf in chunk_files:
         data = np.load(cf)
         n = len(data)
-        flat_tokens[offset:offset + n] = data
+        mm[offset:offset + n] = data
         offset += n
         cf.unlink()
-    flat_tokens.flush()
-    del flat_tokens
+    mm.flush()
+    del mm
     
     np.save(lengths_path, lengths_arr)
     print(f"  Saved {total_tokens * 4 / 1e9:.1f}GB tokens, {len(lengths):,} sequences")
     
-    return flat_tokens, lengths_arr
+    return np.load(tokens_path, mmap_mode="r"), np.load(lengths_path, mmap_mode="r")
 
 
 class MMapDataset:
