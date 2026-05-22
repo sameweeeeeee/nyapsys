@@ -63,7 +63,7 @@ body {
   background: var(--bg-secondary); border: 1px solid var(--border);
   border-radius: 99px; padding: 6px 12px; font-size: 12px; color: var(--text-secondary);
 }
-.status-dot { width: 6px; height: 6px; background: #3B82F6; border-radius: 50%; animation: pulse 2s infinite; }
+.status-dot { width: 6px; height: 6px; background: var(--accent); border-radius: 50%; animation: pulse 2s infinite; }
 
 .sidebar-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(2px);
@@ -182,7 +182,7 @@ body {
 
 @media (max-width: 375px) {
   .topbar { padding: 0 12px; }
-  .topbar-logo { font-size: 18px; margin-left: 8px; }
+  .topbar-logo-text { font-size: 18px; margin-left: 8px; }
   .status-pill { display: none; }
   .messages-area { padding: 24px 12px 100px; }
   .message-bubble { max-width: 90%; padding: 12px 14px; font-size: 14px; }
@@ -190,7 +190,6 @@ body {
   .message-input-form { padding: 12px 12px 16px; }
   .empty-title { font-size: 22px; }
   .empty-subtitle { font-size: 13px; max-width: 280px; }
-  .empty-orb { width: 56px; height: 56px; }
   .empty-pill { padding: 6px 12px; font-size: 12px; }
   .sidebar { width: 260px; }
 }
