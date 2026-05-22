@@ -232,7 +232,7 @@ def pre_tokenize_dataset(path: Path, max_length: int = 4096, vocab_size: int = 3
     
     if tokens_path.exists() and lengths_path.exists():
         print(f"Loading cached tokens from {cache_dir}")
-        return np.load(tokens_path, mmap_mode="r"), np.load(lengths_path, mmap_mode="r")
+        return np.memmap(tokens_path, dtype=np.int32, mode='r'), np.load(lengths_path)
     
     print(f"Pre-tokenizing {path} (limit={limit})...")
     CHUNK = 50000
@@ -277,8 +277,7 @@ def pre_tokenize_dataset(path: Path, max_length: int = 4096, vocab_size: int = 3
     lengths_arr = np.array(lengths, dtype=np.int32)
     total_tokens = lengths_arr.sum()
     
-    from numpy.lib.format import open_memmap
-    mm = open_memmap(tokens_path, dtype=np.int32, mode='w+', shape=(total_tokens,))
+    mm = np.memmap(tokens_path, dtype=np.int32, mode='write', shape=(total_tokens,))
     offset = 0
     for cf in chunk_files:
         data = np.load(cf)
@@ -292,7 +291,7 @@ def pre_tokenize_dataset(path: Path, max_length: int = 4096, vocab_size: int = 3
     np.save(lengths_path, lengths_arr)
     print(f"  Saved {total_tokens * 4 / 1e9:.1f}GB tokens, {len(lengths):,} sequences")
     
-    return np.load(tokens_path, mmap_mode="r"), np.load(lengths_path, mmap_mode="r")
+    return np.memmap(tokens_path, dtype=np.int32, mode='r'), np.load(lengths_path)
 
 
 class MMapDataset:
