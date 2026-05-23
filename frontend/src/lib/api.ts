@@ -65,3 +65,16 @@ export async function getMessages(conversationId: string): Promise<Message[]> {
   if (!response.ok) throw new Error('Failed to fetch messages')
   return response.json()
 }
+
+export interface TrainingLogs {
+  log: string
+  error: string | null
+  connected: boolean
+  line_count: number
+}
+
+export async function fetchTrainingLogs(lines: number = 200): Promise<TrainingLogs> {
+  const response = await fetch(`${API_URL}/v1/training/logs?lines=${lines}`, { headers: { 'Authorization': `Bearer ${API_KEY}` } })
+  if (!response.ok) return { log: '', error: `HTTP ${response.status}`, connected: false, line_count: 0 }
+  return response.json()
+}

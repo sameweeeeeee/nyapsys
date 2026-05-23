@@ -50,7 +50,7 @@ CONFIG_3B_MOE = {
     "num_experts": 4,
     "num_experts_per_token": 2,
     "expert_intermediate_size": 4096,
-    "router_aux_loss_coef": 0.01,
+    "router_aux_loss_coef": 0.03,
 }
 # Total params: ~2.1B. Active per token: ~1.1B. VRAM during training: ~13–15GB.
 

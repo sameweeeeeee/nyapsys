@@ -3,10 +3,30 @@
 import { useChat } from '../hooks/useChat'
 import { MessageBubble } from '../components/MessageBubble'
 import { MessageInput } from '../components/MessageInput'
+import { SettingsView } from '../components/SettingsView'
 
 export function ChatWindow() {
-  const { messages, conversations, conversationId, isLoading, error, attachedFile, sidebarOpen, setSidebarOpen, inputText, setInputText, sendMessage, selectConversation, startNewConversation, removeConversation, attachFile, removeFile, messagesEndRef } = useChat()
+  const { messages, conversations, conversationId, isLoading, error, attachedFile, sidebarOpen, setSidebarOpen, inputText, setInputText, sendMessage, selectConversation, startNewConversation, removeConversation, attachFile, removeFile, messagesEndRef, view, setView } = useChat()
   const isEmpty = messages.length === 0
+
+  if (view === 'settings') {
+    return (
+      <>
+        <div className={`sidebar-overlay ${sidebarOpen ? 'open' : ''}`} onClick={() => setSidebarOpen(false)} />
+        <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
+          <div className="sidebar-header">
+            <img src="/logo.svg" alt="Nyapsys" className="sidebar-logo-img" />
+            <button className="sidebar-close" onClick={() => setSidebarOpen(false)}>×</button>
+          </div>
+          <button className="sidebar-new-btn" onClick={() => { startNewConversation(); setView('chat') }}>New conversation</button>
+          <div className="sidebar-footer">
+            <button className="sidebar-settings-btn active" onClick={() => setView('settings')}>Settings</button>
+          </div>
+        </aside>
+        <SettingsView onBack={() => setView('chat')} />
+      </>
+    )
+  }
 
   const starterPills = [
     { label: 'Summarise a document', text: 'I have a document I need summarised. Can you help?' },
@@ -34,7 +54,7 @@ export function ChatWindow() {
           ))}
         </div>
         <div className="sidebar-footer">
-          <button className="sidebar-model-btn">Nyapsys 2B MoE</button>
+          <button className="sidebar-settings-btn" onClick={() => setView('settings')}>Settings</button>
         </div>
       </aside>
 

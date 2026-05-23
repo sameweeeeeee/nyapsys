@@ -18,6 +18,8 @@ from tqdm import tqdm
 
 from model_config import get_config
 
+torch.set_float32_matmul_precision('high')
+
 
 class NyapsysMoEConfig(PretrainedConfig):
     model_type = "nyapsys_moe"
@@ -156,14 +158,15 @@ class MoELayer(nn.Module):
 
         q, k = apply_rope(q, k, cos, sin)
 
-        k_expanded = k.repeat_interleave(self.num_heads // self.num_kv_heads, dim=1)
-        v_expanded = v.repeat_interleave(self.num_heads // self.num_kv_heads, dim=1)
+        k = k.repeat_interleave(self.num_heads // self.num_kv_heads, dim=1)
+        v = v.repeat_interleave(self.num_heads // self.num_kv_heads, dim=1)
 
-        attn_weights = torch.matmul(q, k_expanded.transpose(-2, -1)) / math.sqrt(self.head_dim)
-        if attention_mask is not None:
-            attn_weights = attn_weights + attention_mask
-        attn_weights = F.softmax(attn_weights, dim=-1, dtype=torch.float32).to(q.dtype)
-        attn_out = torch.matmul(attn_weights, v_expanded)
+        attn_out = F.scaled_dot_product_attention(
+            q, k, v,
+            attn_mask=attention_mask,
+            dropout_p=0.0,
+            is_causal=True,
+        )
         attn_out = attn_out.transpose(1, 2).contiguous().view(batch_size, seq_len, -1)
         return self.o_proj(attn_out)
 
@@ -268,7 +271,7 @@ def pre_tokenize_dataset(path: Path, max_length: int = 4096, vocab_size: int = 3
             cf = cache_dir / f"chunk_{count:07d}.npy"
             np.save(cf, chunk_flat)
             chunk_files.append(cf)
-            print(f"  Tokenized {count:,} samples...")
+            print(f"  Tokenized {count:,} samples...", flush=True)
             
             if limit and count >= limit:
                 break
@@ -309,18 +312,6 @@ class MMapDataset:
         start = self.offsets[idx]
         length = self.lengths[idx]
         return torch.from_numpy(self.tokens[start:start + length].copy())
-
-
-def upload_to_gcs(local_path: str, gcs_path: str):
-    if not gcs_path.startswith("gs://"):
-        return
-    print(f"Uploading to {gcs_path}...")
-    result = subprocess.run(["gsutil", "cp", local_path, gcs_path], capture_output=True, text=True, timeout=300)
-    if result.returncode != 0:
-        print(f"WARNING: GCS upload failed: {result.stderr}")
-    else:
-        print(f"Uploaded to {gcs_path}")
-    os.remove(local_path)
 
 
 def collate_fn(batch):
@@ -366,22 +357,36 @@ def main():
     model = MoEModel(config)
     if args.resume_from_checkpoint:
         if args.resume_from_checkpoint.lower() == "latest":
-            import subprocess
-            result = subprocess.run(
-                ["gsutil", "ls", f"{args.output_dir}step-*.pt"],
-                capture_output=True, text=True, timeout=30
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                latest = sorted(result.stdout.strip().split())[-1]
-                args.resume_from_checkpoint = latest
+            local_dir = args.output_dir if not args.output_dir.startswith("gs://") else "./checkpoints"
+            ckpt = None
+            if os.path.isdir(local_dir):
+                local_ckpts = sorted(Path(local_dir).glob("step-*.pt"),
+                                   key=lambda p: int(p.stem.split("-")[1]))
+                if local_ckpts:
+                    ckpt = str(local_ckpts[-1])
+                    print(f"Found local checkpoint: {ckpt}")
+            if not ckpt and args.output_dir.startswith("gs://"):
+                result = subprocess.run(
+                    ["gsutil", "ls", f"{args.output_dir}step-*.pt"],
+                    capture_output=True, text=True, timeout=30
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    ckpt = sorted(result.stdout.strip().split())[-1]
+            if ckpt:
+                args.resume_from_checkpoint = ckpt
             else:
                 print("No checkpoints found, starting fresh")
                 args.resume_from_checkpoint = None
         if args.resume_from_checkpoint:
             print(f"Resuming from {args.resume_from_checkpoint}")
             ckpt = torch.load(args.resume_from_checkpoint, map_location="cpu")
-            model.load_state_dict(ckpt["model"])
-
+            state_dict = ckpt["model"]
+            if any(k.startswith("_orig_mod.") for k in state_dict):
+                state_dict = {k.removeprefix("_orig_mod."): v for k, v in state_dict.items()}
+            model.load_state_dict(state_dict)
+            args._checkpoint_step = ckpt.get("step", 0)
+            args._checkpoint_data = ckpt
+            print(f"Loaded checkpoint from step {args._checkpoint_step}")
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
 
@@ -397,6 +402,12 @@ def main():
     optimizer = Adafactor(model.parameters(), lr=args.learning_rate)
     total_steps = args.max_steps if args.max_steps else (len(train_data) * 3 // args.batch_size)
     scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=args.warmup_steps, num_training_steps=total_steps)
+    if hasattr(args, "_checkpoint_data") and "scheduler" in args._checkpoint_data:
+        try:
+            scheduler.load_state_dict(args._checkpoint_data["scheduler"])
+            print(f"Restored scheduler (last_epoch={scheduler.last_epoch}, up to {total_steps} total)")
+        except Exception as e:
+            print(f"Warning: could not restore scheduler: {e}")
 
     train_loader = DataLoader(
         train_data,
@@ -409,7 +420,9 @@ def main():
     )
     os.makedirs(args.output_dir, exist_ok=True)
 
-    global_step = 0
+    global_step = getattr(args, "_checkpoint_step", 0)
+    if global_step > 0:
+        print(f"Resuming training from step {global_step}")
     model.train()
     pbar = tqdm(train_loader, desc="Training")
 
@@ -419,6 +432,12 @@ def main():
             logits, router_logits = model(batch[:, :-1], use_checkpoint=True)
             loss = compute_loss(logits, batch[:, 1:], router_logits[-1], config["num_experts"], config["router_aux_loss_coef"])
             loss = loss / args.gradient_accumulation_steps
+
+        if torch.isnan(loss) or torch.isinf(loss):
+            tqdm.write(f"[Step {global_step}] WARNING: NaN/Inf loss detected, skipping batch")
+            optimizer.zero_grad()
+            global_step += 1
+            continue
 
         scaler.scale(loss).backward()
 
@@ -436,27 +455,35 @@ def main():
             tqdm.write(f"[Step {global_step}] loss={actual_loss:.4f} | {log_router_stats(router_logits[-1])}")
 
         if (global_step + 1) % 2000 == 0 and not args.smoke_test:
-            local_ckpt = f"/tmp/step-{global_step + 1}.pt"
-            torch.save({"model": model.state_dict(), "config": config, "step": global_step + 1}, local_ckpt)
-            print(f"Saved checkpoint locally: {local_ckpt}")
+            ckpt_dir = args.output_dir if not args.output_dir.startswith("gs://") else "./checkpoints"
+            os.makedirs(ckpt_dir, exist_ok=True)
+            ckpt_path = os.path.join(ckpt_dir, f"step-{global_step + 1}.pt")
+            unwrapped = model._orig_mod if hasattr(model, "_orig_mod") else model
+            torch.save({"model": unwrapped.state_dict(), "config": config, "step": global_step + 1,
+                        "scheduler": scheduler.state_dict(), "total_steps": total_steps}, ckpt_path)
+            print(f"Saved checkpoint: {ckpt_path}")
             if args.output_dir.startswith("gs://"):
-                upload_to_gcs(local_ckpt, f"{args.output_dir}step-{global_step + 1}.pt")
-            else:
-                os.makedirs(args.output_dir, exist_ok=True)
-                subprocess.run(["cp", local_ckpt, os.path.join(args.output_dir, f"step-{global_step + 1}.pt")])
+                gcs_path = f"{args.output_dir}step-{global_step + 1}.pt"
+                result = subprocess.run(["gsutil", "cp", ckpt_path, gcs_path], capture_output=True, text=True, timeout=300)
+                if result.returncode == 0:
+                    print(f"Uploaded to {gcs_path}")
+                else:
+                    print(f"WARNING: GCS upload failed: {result.stderr}")
 
         global_step += 1
         if args.max_steps and global_step >= args.max_steps:
             break
 
-    local_final = "/tmp/final.pt"
-    torch.save({"model": model.state_dict(), "config": config}, local_final)
-    print(f"Saved final model: {local_final}")
+    ckpt_dir = args.output_dir if not args.output_dir.startswith("gs://") else "./checkpoints"
+    os.makedirs(ckpt_dir, exist_ok=True)
+    final_path = os.path.join(ckpt_dir, "final.pt")
+    torch.save({"model": model.state_dict(), "config": config}, final_path)
+    print(f"Saved final model: {final_path}")
     if args.output_dir.startswith("gs://"):
-        upload_to_gcs(local_final, f"{args.output_dir}final.pt")
-    else:
-        os.makedirs(args.output_dir, exist_ok=True)
-        subprocess.run(["cp", local_final, os.path.join(args.output_dir, "final.pt")])
+        gcs_path = f"{args.output_dir}final.pt"
+        result = subprocess.run(["gsutil", "cp", final_path, gcs_path], capture_output=True, text=True, timeout=300)
+        if result.returncode == 0:
+            print(f"Uploaded to {gcs_path}")
     print("Done!")
 
     if not args.smoke_test:

@@ -157,3 +157,46 @@ async def invoke_tool(name: str = Form(...), args: str = Form(...)):
 async def submit_feedback(req: FeedbackRequest):
     await db.insert_eval(req.message_id, req.score, req.feedback)
     return {"status": "recorded"}
+
+
+import subprocess
+import shlex
+
+
+@app.get("/v1/training/logs", dependencies=[Depends(verify_auth)])
+async def get_training_logs(lines: int = 200):
+    import asyncio
+    ssh_cmd = shlex.split(
+        'gcloud compute ssh nyapsys-spot --zone=us-central1-a --tunnel-through-iap'
+        f' --command="tail -{lines} /tmp/train.log"'
+        ' -- -o ConnectTimeout=10 -o ServerAliveInterval=5'
+    )
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *ssh_cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            timeout=30
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
+        if proc.returncode != 0:
+            return {
+                "log": "",
+                "error": f"SSH failed (code {proc.returncode}): {stderr.decode(errors='replace')[:500]}",
+                "connected": False
+            }
+        raw = stdout.decode(errors="replace")
+        import re
+        lines_out = raw.strip().split("\n")
+        return {
+            "log": raw,
+            "error": None,
+            "connected": True,
+            "line_count": len(lines_out),
+        }
+    except asyncio.TimeoutError:
+        return {"log": "", "error": "SSH timed out (30s)", "connected": False}
+    except FileNotFoundError:
+        return {"log": "", "error": "gcloud not found on this machine", "connected": False}
+    except Exception as e:
+        return {"log": "", "error": str(e), "connected": False}

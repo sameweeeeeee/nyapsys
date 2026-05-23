@@ -193,3 +193,44 @@ body {
   .empty-pill { padding: 6px 12px; font-size: 12px; }
   .sidebar { width: 260px; }
 }
+
+/* Settings */
+.settings-page { display: flex; flex-direction: column; height: 100vh; }
+.settings-title { font-family: 'Instrument Serif', serif; font-size: 20px; font-weight: 400; margin-left: 12px; color: var(--text-primary); }
+.settings-content { flex: 1; overflow-y: auto; padding: 24px 32px 40px; max-width: 960px; margin: 0 auto; width: 100%; margin-top: 68px; }
+.settings-section { margin-bottom: 24px; }
+.settings-section-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+.settings-section-title { font-size: 15px; font-weight: 500; color: var(--text-primary); }
+.settings-controls { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.settings-toggle { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-secondary); cursor: pointer; }
+.settings-toggle input { accent-color: var(--accent); }
+.settings-refresh-btn { padding: 5px 14px; background: var(--accent); color: white; border: none; border-radius: var(--radius-xs); font-size: 12px; cursor: pointer; font-family: 'DM Sans', sans-serif; }
+.settings-refresh-btn:hover { opacity: 0.88; }
+.settings-status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; }
+.status-indicator { width: 8px; height: 8px; border-radius: 50%; }
+.status-indicator.connected { background: #22c55e; }
+.status-indicator.disconnected { background: #ef4444; }
+.settings-error { color: #ef4444; }
+
+.log-viewer {
+  background: #111;
+  color: #a8e8a8;
+  font-family: 'SF Mono', 'Fira Code', 'Menlo', monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  padding: 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  max-height: 70vh;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.sidebar-settings-btn {
+  width: 100%; padding: 10px 12px; background: transparent; border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs); font-size: 13px; color: var(--text-secondary); cursor: pointer;
+  font-family: 'DM Sans', sans-serif; text-align: left; margin-bottom: 8px;
+}
+.sidebar-settings-btn:hover, .sidebar-settings-btn.active { background: var(--bg-tertiary); color: var(--text-primary); }
+.sidebar-back-btn { text-align: center; background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }

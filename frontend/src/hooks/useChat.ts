@@ -15,6 +15,7 @@ export function useChat() {
   const [attachedFile, setAttachedFile] = useState<File | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [inputText, setInputText] = useState('')
+  const [view, setView] = useState<'chat' | 'settings'>('chat')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = useCallback(() => {
@@ -91,5 +92,5 @@ export function useChat() {
   const attachFile = useCallback((file: File) => { setAttachedFile(file) }, [])
   const removeFile = useCallback(() => { setAttachedFile(null) }, [])
 
-  return { messages, conversations, conversationId, isLoading, error, attachedFile, sidebarOpen, setSidebarOpen, inputText, setInputText, sendMessage, selectConversation, startNewConversation, removeConversation, attachFile, removeFile, messagesEndRef }
+  return { messages, conversations, conversationId, isLoading, error, attachedFile, sidebarOpen, setSidebarOpen, inputText, setInputText, sendMessage, selectConversation, startNewConversation, removeConversation, attachFile, removeFile, messagesEndRef, view, setView }
 }
