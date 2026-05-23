@@ -355,6 +355,8 @@ def main():
     print(f"Train: {len(train_data)} samples")
 
     model = MoEModel(config)
+    total_batches = len(train_data) // args.batch_size
+    total_optim_steps = total_batches // args.gradient_accumulation_steps
     if args.resume_from_checkpoint:
         if args.resume_from_checkpoint.lower() == "latest":
             local_dir = args.output_dir if not args.output_dir.startswith("gs://") else "./checkpoints"
@@ -384,9 +386,13 @@ def main():
             if any(k.startswith("_orig_mod.") for k in state_dict):
                 state_dict = {k.removeprefix("_orig_mod."): v for k, v in state_dict.items()}
             model.load_state_dict(state_dict)
-            args._checkpoint_step = ckpt.get("step", 0)
+            loaded_step = ckpt.get("step", 0)
+            if loaded_step > total_optim_steps:
+                loaded_step = loaded_step // args.gradient_accumulation_steps
+                print(f"  (converted from batch-counted step)")
+            args._checkpoint_step = loaded_step
             args._checkpoint_data = ckpt
-            print(f"Loaded checkpoint from step {args._checkpoint_step}")
+            print(f"Loaded checkpoint from optimizer step {args._checkpoint_step}")
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model.to(device)
 
@@ -400,7 +406,7 @@ def main():
     scaler = torch.amp.GradScaler("cuda", enabled=torch.cuda.is_available())
 
     optimizer = Adafactor(model.parameters(), lr=args.learning_rate)
-    total_steps = args.max_steps if args.max_steps else (len(train_data) * 3 // args.batch_size)
+    total_steps = args.max_steps if args.max_steps else total_optim_steps
     scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=args.warmup_steps, num_training_steps=total_steps)
     if hasattr(args, "_checkpoint_data") and "scheduler" in args._checkpoint_data:
         try:
@@ -420,11 +426,13 @@ def main():
     )
     os.makedirs(args.output_dir, exist_ok=True)
 
-    global_step = getattr(args, "_checkpoint_step", 0)
-    if global_step > 0:
-        print(f"Resuming training from step {global_step}")
+    optim_step = getattr(args, "_checkpoint_step", 0)
+    batch_count = optim_step * args.gradient_accumulation_steps
+    if optim_step > 0:
+        print(f"Resuming training from optimizer step {optim_step} (batch {batch_count})")
     model.train()
     pbar = tqdm(train_loader, desc="Training")
+    done = False
 
     for batch in pbar:
         batch = batch.to(device)
@@ -434,44 +442,47 @@ def main():
             loss = loss / args.gradient_accumulation_steps
 
         if torch.isnan(loss) or torch.isinf(loss):
-            tqdm.write(f"[Step {global_step}] WARNING: NaN/Inf loss detected, skipping batch")
+            tqdm.write(f"[Optim step {optim_step}] WARNING: NaN/Inf loss detected, skipping batch")
             optimizer.zero_grad()
-            global_step += 1
             continue
 
         scaler.scale(loss).backward()
+        batch_count += 1
 
-        if (global_step + 1) % args.gradient_accumulation_steps == 0:
+        if batch_count % args.gradient_accumulation_steps == 0:
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
             scaler.step(optimizer)
             scaler.update()
             scheduler.step()
             optimizer.zero_grad()
+            optim_step += 1
 
-        if global_step % 100 == 0:
-            actual_loss = loss.item() * args.gradient_accumulation_steps
-            pbar.set_postfix({"loss": f"{actual_loss:.4f}"})
-            tqdm.write(f"[Step {global_step}] loss={actual_loss:.4f} | {log_router_stats(router_logits[-1])}")
+            if optim_step % 100 == 0:
+                actual_loss = loss.item() * args.gradient_accumulation_steps
+                pbar.set_postfix({"loss": f"{actual_loss:.4f}"})
+                tqdm.write(f"[Step {optim_step}] loss={actual_loss:.4f} | {log_router_stats(router_logits[-1])}")
 
-        if (global_step + 1) % 2000 == 0 and not args.smoke_test:
-            ckpt_dir = args.output_dir if not args.output_dir.startswith("gs://") else "./checkpoints"
-            os.makedirs(ckpt_dir, exist_ok=True)
-            ckpt_path = os.path.join(ckpt_dir, f"step-{global_step + 1}.pt")
-            unwrapped = model._orig_mod if hasattr(model, "_orig_mod") else model
-            torch.save({"model": unwrapped.state_dict(), "config": config, "step": global_step + 1,
-                        "scheduler": scheduler.state_dict(), "total_steps": total_steps}, ckpt_path)
-            print(f"Saved checkpoint: {ckpt_path}")
-            if args.output_dir.startswith("gs://"):
-                gcs_path = f"{args.output_dir}step-{global_step + 1}.pt"
-                result = subprocess.run(["gsutil", "cp", ckpt_path, gcs_path], capture_output=True, text=True, timeout=300)
-                if result.returncode == 0:
-                    print(f"Uploaded to {gcs_path}")
-                else:
-                    print(f"WARNING: GCS upload failed: {result.stderr}")
+            if optim_step % 2000 == 0 and not args.smoke_test:
+                ckpt_dir = args.output_dir if not args.output_dir.startswith("gs://") else "./checkpoints"
+                os.makedirs(ckpt_dir, exist_ok=True)
+                ckpt_path = os.path.join(ckpt_dir, f"step-{optim_step}.pt")
+                unwrapped = model._orig_mod if hasattr(model, "_orig_mod") else model
+                torch.save({"model": unwrapped.state_dict(), "config": config, "step": optim_step,
+                            "scheduler": scheduler.state_dict(), "total_steps": total_steps}, ckpt_path)
+                print(f"Saved checkpoint: {ckpt_path}")
+                if args.output_dir.startswith("gs://"):
+                    gcs_path = f"{args.output_dir}step-{optim_step}.pt"
+                    result = subprocess.run(["gsutil", "cp", ckpt_path, gcs_path], capture_output=True, text=True, timeout=300)
+                    if result.returncode == 0:
+                        print(f"Uploaded to {gcs_path}")
+                    else:
+                        print(f"WARNING: GCS upload failed: {result.stderr}")
 
-        global_step += 1
-        if args.max_steps and global_step >= args.max_steps:
+            if args.max_steps and optim_step >= args.max_steps:
+                done = True
+                break
+        if done:
             break
 
     ckpt_dir = args.output_dir if not args.output_dir.startswith("gs://") else "./checkpoints"
