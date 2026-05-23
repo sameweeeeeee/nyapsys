@@ -197,46 +197,48 @@ def _parse_training_log(raw: str) -> list[str]:
     if len(lines) == 1:
         lines = raw.split("\n")
 
-    # take last occurrence per "step group" for tqdm lines
-    seen: dict[str, str] = {}
     result: list[str] = []
     token_count = 0
+    tqdm_buffer: list[str] = []
+    MAX_TQDM = 12  # keep at most this many tqdm lines
 
     for line in lines:
         stripped = line.strip()
         if not stripped:
             continue
 
-        # filter: skip raw tokenization progress (too verbose)
+        # skip raw tokenization progress
         if re.match(r'^\s*Tokenized [\d,]+ samples\.\.\.', stripped):
             token_count += 1
             continue
 
-        # filter: skip cudagraph warnings
+        # skip cudagraph warnings
         if 'torch/_inductor/cudagraph_utils' in stripped or '__cudagraphs' in stripped:
             continue
 
-        # filter: skip "Merging X chunks" and "Saved" noise
+        # skip merging/saved noise
         if stripped.startswith('Merging ') or stripped.startswith('  Saved '):
             continue
 
-        # capture tqdm lines — keep only the latest per step group
-        tqdm_match = re.match(
-            r'Training:\s+\d+%\|[^|]+\|\s+(\d+)/(\d+)',
-            stripped
-        )
-        if tqdm_match:
-            step = tqdm_match.group(1)
-            seen[step] = stripped
+        # tqdm lines — keep rolling buffer of last N
+        if stripped.startswith('Training:'):
+            # strip the progress bar characters to save space
+            clean = re.sub(
+                r'Training:\s+\d+%\|[^|]+\|\s+',
+                '',
+                stripped
+            )
+            tqdm_buffer.append(clean)
+            if len(tqdm_buffer) > MAX_TQDM:
+                tqdm_buffer.pop(0)
             continue
 
         result.append(stripped)
 
-    deduped = list(seen.values())
-    if deduped:
-        result.append("")
-        result.append("── tqdm (latest) ──")
-        result.extend(deduped[-5:])
+    if tqdm_buffer:
+        for t in tqdm_buffer:
+            result.append("")
+            result.append(t)
 
     if token_count:
         result.append("")

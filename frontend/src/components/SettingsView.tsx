@@ -85,6 +85,9 @@ export function SettingsView({ onBack }: Props) {
               <span className="log-muted">Waiting for log data...</span>
             ) : (
               lines.map((line, i) => {
+                if (!line) {
+                  return <div key={i} className="log-line-blank" />
+                }
                 if (line.startsWith('──')) {
                   return <div key={i} className="log-section-sep">{line}</div>
                 }
