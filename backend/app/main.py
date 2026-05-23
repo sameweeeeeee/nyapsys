@@ -164,7 +164,7 @@ import shlex
 
 
 @app.get("/v1/training/logs", dependencies=[Depends(verify_auth)])
-async def get_training_logs(lines: int = 200):
+async def get_training_logs(lines: int = 500):
     import asyncio
     ssh_cmd = shlex.split(
         'gcloud compute ssh nyapsys-spot --zone=us-central1-a --tunnel-through-iap'
@@ -176,27 +176,70 @@ async def get_training_logs(lines: int = 200):
             *ssh_cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            timeout=30
         )
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
         if proc.returncode != 0:
-            return {
-                "log": "",
-                "error": f"SSH failed (code {proc.returncode}): {stderr.decode(errors='replace')[:500]}",
-                "connected": False
-            }
+            return {"log": "", "parsed": [], "error": f"SSH failed (code {proc.returncode})", "connected": False}
         raw = stdout.decode(errors="replace")
-        import re
-        lines_out = raw.strip().split("\n")
-        return {
-            "log": raw,
-            "error": None,
-            "connected": True,
-            "line_count": len(lines_out),
-        }
+        parsed = _parse_training_log(raw)
+        return {"log": raw, "parsed": parsed, "error": None, "connected": True, "line_count": len(parsed)}
     except asyncio.TimeoutError:
-        return {"log": "", "error": "SSH timed out (30s)", "connected": False}
+        return {"log": "", "parsed": [], "error": "SSH timed out (30s)", "connected": False}
     except FileNotFoundError:
-        return {"log": "", "error": "gcloud not found on this machine", "connected": False}
+        return {"log": "", "parsed": [], "error": "gcloud not found on this machine", "connected": False}
     except Exception as e:
-        return {"log": "", "error": str(e), "connected": False}
+        return {"log": "", "parsed": [], "error": str(e), "connected": False}
+
+
+def _parse_training_log(raw: str) -> list[str]:
+    import re
+    lines = raw.split("\r\n")
+    if len(lines) == 1:
+        lines = raw.split("\n")
+
+    # take last occurrence per "step group" for tqdm lines
+    seen: dict[str, str] = {}
+    result: list[str] = []
+    token_count = 0
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        # filter: skip raw tokenization progress (too verbose)
+        if re.match(r'^\s*Tokenized [\d,]+ samples\.\.\.', stripped):
+            token_count += 1
+            continue
+
+        # filter: skip cudagraph warnings
+        if 'torch/_inductor/cudagraph_utils' in stripped or '__cudagraphs' in stripped:
+            continue
+
+        # filter: skip "Merging X chunks" and "Saved" noise
+        if stripped.startswith('Merging ') or stripped.startswith('  Saved '):
+            continue
+
+        # capture tqdm lines — keep only the latest per step group
+        tqdm_match = re.match(
+            r'Training:\s+\d+%\|[^|]+\|\s+(\d+)/(\d+)',
+            stripped
+        )
+        if tqdm_match:
+            step = tqdm_match.group(1)
+            seen[step] = stripped
+            continue
+
+        result.append(stripped)
+
+    deduped = list(seen.values())
+    if deduped:
+        result.append("")
+        result.append("── tqdm (latest) ──")
+        result.extend(deduped[-5:])
+
+    if token_count:
+        result.append("")
+        result.append(f"── Tokenization: {token_count} progress lines filtered ──")
+
+    return result

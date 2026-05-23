@@ -1,6 +1,7 @@
 import os
 from typing import Optional
 import chromadb
+from chromadb.config import Settings
 from sentence_transformers import SentenceTransformer
 
 
@@ -23,11 +24,22 @@ def _get_embedding_model():
 
 def init_collection():
     global client, collection
-    client = chromadb.HttpClient(host="127.0.0.1", port=8001)
     try:
-        collection = client.get_collection("nyapsys_kb")
-    except Exception:
-        collection = client.create_collection("nyapsys_kb", metadata={"hnsw:space": "cosine"})
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(2)
+        result = s.connect_ex(('127.0.0.1', 8001))
+        s.close()
+        if result != 0:
+            print("[rag] ChromaDB not running on 127.0.0.1:8001. RAG disabled.")
+            return
+        client = chromadb.HttpClient(host="127.0.0.1", port=8001, settings=Settings(anonymized_telemetry=False, chroma_client_auth_provider=None))
+        try:
+            collection = client.get_collection("nyapsys_kb")
+        except Exception:
+            collection = client.create_collection("nyapsys_kb", metadata={"hnsw:space": "cosine"})
+    except Exception as e:
+        print(f"[rag] ChromaDB init failed: {e}. RAG disabled.")
 
 
 def embed_and_upsert(chunks, metadatas, ids):

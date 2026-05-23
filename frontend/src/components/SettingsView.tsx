@@ -44,6 +44,9 @@ export function SettingsView({ onBack }: Props) {
     }
   }, [polling, fetchLogs])
 
+  const lines = logs?.parsed ?? []
+  const isLatest = (i: number) => i >= lines.length - 6 && lines[i].includes('Training:')
+
   return (
     <div className="settings-page">
       <header className="topbar">
@@ -78,7 +81,28 @@ export function SettingsView({ onBack }: Props) {
 
         <section className="settings-section">
           <pre ref={preRef} className="log-viewer">
-            {logs?.log ? logs.log : 'Waiting for log data...'}
+            {lines.length === 0 ? (
+              <span className="log-muted">Waiting for log data...</span>
+            ) : (
+              lines.map((line, i) => {
+                if (line.startsWith('──')) {
+                  return <div key={i} className="log-section-sep">{line}</div>
+                }
+                if (isLatest(i)) {
+                  return <div key={i} className="log-tqdm">{line}</div>
+                }
+                if (line.startsWith('Training') || line.toLowerCase().includes('loss')) {
+                  return <div key={i} className="log-info">{line}</div>
+                }
+                if (line.startsWith('Expert load')) {
+                  return <div key={i} className="log-expert">{line}</div>
+                }
+                if (line.toLowerCase().includes('error') || line.toLowerCase().includes('nan')) {
+                  return <div key={i} className="log-error-line">{line}</div>
+                }
+                return <div key={i} className="log-line">{line}</div>
+              })
+            )}
           </pre>
         </section>
       </main>

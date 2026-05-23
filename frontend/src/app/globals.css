@@ -216,9 +216,9 @@ body {
   background: #111;
   color: #a8e8a8;
   font-family: 'SF Mono', 'Fira Code', 'Menlo', monospace;
-  font-size: 12px;
-  line-height: 1.55;
-  padding: 16px;
+  font-size: 13px;
+  line-height: 1.8;
+  padding: 20px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   max-height: 70vh;
@@ -226,6 +226,15 @@ body {
   white-space: pre-wrap;
   word-break: break-all;
 }
+
+.log-viewer > * { padding: 3px 0; }
+.log-muted { color: var(--text-muted); font-style: italic; }
+.log-section-sep { color: var(--text-muted); font-size: 11px; letter-spacing: 0.05em; padding: 8px 0 4px; border-top: 1px solid rgba(255,255,255,0.06); margin-top: 4px; }
+.log-tqdm { color: #7ec8e3; font-weight: 500; background: rgba(126, 200, 227, 0.06); border-radius: 4px; padding: 4px 8px; margin: 2px 0; }
+.log-info { color: #e5e5e5; }
+.log-expert { color: #c8a87e; }
+.log-error-line { color: #ef4444; background: rgba(239, 68, 68, 0.08); border-radius: 4px; padding: 4px 8px; margin: 2px 0; }
+.log-line { color: #a8e8a8; }
 
 .sidebar-settings-btn {
   width: 100%; padding: 10px 12px; background: transparent; border: 1px solid var(--border-strong);
