@@ -237,11 +237,9 @@ def _parse_training_log(raw: str) -> list[str]:
 
     if tqdm_buffer:
         for t in tqdm_buffer:
-            result.append("")
             result.append(t)
 
     if token_count:
-        result.append("")
         result.append(f"── Tokenization: {token_count} progress lines filtered ──")
 
     return result
