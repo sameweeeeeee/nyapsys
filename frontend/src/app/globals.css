@@ -227,7 +227,7 @@ body {
   word-break: break-all;
 }
 
-.log-viewer > * { padding: 3px 0; }
+.log-viewer > * { margin: 6px 0; }
 .log-muted { color: var(--text-muted); font-style: italic; }
 .log-section-sep { color: var(--text-muted); font-size: 11px; letter-spacing: 0.05em; padding: 8px 0 4px; border-top: 1px solid rgba(255,255,255,0.06); margin-top: 4px; }
 .log-tqdm { color: #7ec8e3; font-weight: 500; background: rgba(126, 200, 227, 0.06); border-radius: 4px; padding: 4px 8px; margin: 2px 0; }
