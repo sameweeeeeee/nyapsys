@@ -11,7 +11,7 @@ MAX_TOOL_ROUNDS = int(os.getenv("MAX_TOOL_ROUNDS", "5"))
 SYSTEM_MESSAGE = "You are Nyapsys, a self-hosted AI assistant running locally on your Mac. You answer questions accurately, read and analyse files, and understand images. Be concise but thorough. If you are unsure, say so."
 
 
-async def _stream_from_model(messages: list[dict], max_tokens: int = 2048, temperature: float = 0.7) -> AsyncGenerator[str, None]:
+async def stream_from_model(messages: list[dict], max_tokens: int = 2048, temperature: float = 0.7) -> AsyncGenerator[str, None]:
     async for token in model.generate(messages=messages, max_tokens=max_tokens, temperature=temperature):
         yield token
 
@@ -32,9 +32,12 @@ async def run(user_message: str, conversation_id: str, file_bytes: Optional[byte
 
     context = ""
     if not image_result:
-        results = rag.query(user_message, conversation_id=conversation_id)
-        if results:
-            context = "\n\n---\n\n".join(r["document"] for r in results)
+        try:
+            results = rag.query(user_message, conversation_id=conversation_id)
+            if results:
+                context = "\n\n---\n\n".join(r["document"] for r in results)
+        except RuntimeError:
+            pass
 
     history = await db.get_messages(conversation_id)
     history = history[-MAX_HISTORY_MESSAGES:]
@@ -67,8 +70,6 @@ async def run(user_message: str, conversation_id: str, file_bytes: Optional[byte
         if not full_response:
             full_response = f"Error: {stream_error}"
             yield f"\n[Error: {stream_error}]\n"
-
-    yield "[DONE]"
 
 
 async def _run_with_tool_loop(messages: list[dict]) -> AsyncGenerator[str, None]:

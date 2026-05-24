@@ -6,12 +6,12 @@
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>/Users/YOUR_USERNAME/nyapsys/backend/run.sh</string>
+    <string>~/nyapsys/backend/run.sh</string>
   </array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>/Users/YOUR_USERNAME/nyapsys/logs/backend.log</string>
-  <key>StandardErrorPath</key><string>/Users/YOUR_USERNAME/nyapsys/logs/backend.error.log</string>
-  <key>WorkingDirectory</key><string>/Users/YOUR_USERNAME/nyapsys/backend</string>
+  <key>StandardOutPath</key><string>~/nyapsys/logs/backend.log</string>
+  <key>StandardErrorPath</key><string>~/nyapsys/logs/backend.error.log</string>
+  <key>WorkingDirectory</key><string>~/nyapsys/backend</string>
 </dict>
 </plist>

@@ -11,10 +11,10 @@ llama-server \
   --model ~/volumes/models/Nyapsys-2B-MoE.Q4_K_M.gguf \
   --host 127.0.0.1 \
   --port 8080 \
-  --ctx-size 2048 \
+  --ctx-size 4096 \
   --n-predict 2048 \
   --threads 4 \
-  --parallel 1 \
+  --parallel 2 \
   --flash-attn \
   --mlock \
   --cont-batching &

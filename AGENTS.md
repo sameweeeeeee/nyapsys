@@ -19,25 +19,23 @@ It is NOT a wrapper around a third-party API. The LLM runs entirely on a MacBook
 ## Final Model Decision
 
 | Property | Value |
-|---|---|
+|---|---|---|
 | Architecture | Sparse Mixture-of-Experts (MoE) transformer decoder, built from scratch in PyTorch |
-| Total parameters | 2B (4 experts × 500M each) |
-| Active params per token | ~1B (top-2 routing — only 2 experts fire per token) |
+| Total parameters | ~1.59B (4 experts × 400M, 18 layers, top-2) |
+| Active params per token | ~795M (top-2 routing — only 2 experts fire per token) |
 | Format (inference) | GGUF Q4_K_M |
-| Size on disk | ~1.3GB |
+| Size on disk | ~1.0GB (est.) |
 | RAM at runtime | ~2–2.5GB |
-| Inference speed | ~70–90 tokens/sec on M3 Air (pays 1B compute cost, not 2B) |
+| Inference speed | ~80–100 tokens/sec on M3 Air (pays 795M compute cost) |
 | Training | GCP Compute Engine L4 GPU (24GB VRAM), one-time, from scratch |
 | Base | No base model — true from-scratch pretraining + instruction tuning |
 
-### Why 2B MoE (not 3B)
+### Why 18 Layers (not 32)
 
-The original plan called for 3B MoE (4×750M, top-2). That was wrong for two reasons:
+Reduced from the original 32-layer 2B MoE plan to **18 layers (~1.59B total)** for two reasons:
 
-1. **Active params were miscalculated.** Top-2 of 4×750M = **1.5B active per token**, not 750M. Training cost scales with active params.
-2. **Training time was wildly underestimated.** 3B MoE on a single L4 at 14B tokens = ~360–525 hours (~20+ days continuous), with spot cost of $144–210. One bad preemption cascade and you exceed the $300 credit before the backend is even built.
-
-**2B MoE (4×500M, top-2) = 1B active per token.** Trains in ~70–90 hours on the L4. Costs ~$28–36 spot. Leaves ~$252–263 credit for retraining if output is word salad. Fast at inference: ~70–90 tok/s on M3.
+1. **Better tokens/param ratio.** With a 4B token dataset, 32 layers (2B params) gives only ~2 tokens/param — too data-poor for good convergence. 18 layers (~1.59B) gives ~2.5 tokens/param.
+2. **Lower cost.** Fewer layers = faster training (~29 days vs ~36 days), fitting comfortably within the $300 GCP credit at $284 total (including 200GB pd-ssd + instruction tuning).
 
 ### MoE design — how it works
 
@@ -256,22 +254,22 @@ tokenizer.save_model("training/tokenizer/")
 ```python
 # training/model_config.py
 
-# 2B MoE config — PRIMARY TARGET
-CONFIG_2B_MOE = {
+# 1.59B MoE config — PRIMARY TARGET (actual: CONFIG_3B_MOE in model_config.py)
+CONFIG_3B_MOE = {
     "vocab_size": 32000,
-    "num_hidden_layers": 32,
+    "num_hidden_layers": 18,
     "hidden_size": 2048,
     "num_attention_heads": 16,
     "num_key_value_heads": 8,           # GQA — reduces KV cache memory
-    "max_position_embeddings": 4096,
+    "max_position_embeddings": 1024,
     "rms_norm_eps": 1e-5,
     "rope_theta": 10000.0,
     "num_experts": 4,
-    "num_experts_per_token": 2,         # top-2 routing = 1B active per token
-    "expert_intermediate_size": 4096,   # per-expert FFN hidden dim
-    "router_aux_loss_coef": 0.01,
+    "num_experts_per_token": 2,         # top-2 routing = 795M active per token
+    "expert_intermediate_size": 4096,
+    "router_aux_loss_coef": 0.03,
 }
-# Total params: ~2B. Active per token: ~1B. VRAM during training: ~9–11GB.
+# Total params: ~1.59B. Active per token: ~795M. VRAM during training: ~10–12GB.
 ```
 
 ---
@@ -1142,5 +1140,5 @@ PHASE 6 — CI/CD
 11. Batch embedding — never one chunk at a time
 12. Destroy GCP instance after training
 13. Tailscale for SSH deploys
-14. **2B MoE (4×500M, top-2) is the target** — 1B active per token
+14. **1.59B MoE (4×400M, 18 layers, top-2) is the target** — 795M active per token
 15. README.md stays in sync with AGENTS.md

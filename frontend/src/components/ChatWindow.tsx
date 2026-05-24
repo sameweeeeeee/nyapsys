@@ -15,7 +15,7 @@ export function ChatWindow() {
         <div className={`sidebar-overlay ${sidebarOpen ? 'open' : ''}`} onClick={() => setSidebarOpen(false)} />
         <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
           <div className="sidebar-header">
-            <img src="/logo.svg" alt="Nyapsys" className="sidebar-logo-img" />
+            <div className="sidebar-logo-text"><span className="logo-nya">nya</span><span className="logo-psys">psys</span></div>
             <button className="sidebar-close" onClick={() => setSidebarOpen(false)}>×</button>
           </div>
           <button className="sidebar-new-btn" onClick={() => { startNewConversation(); setView('chat') }}>New conversation</button>
@@ -40,7 +40,7 @@ export function ChatWindow() {
       <div className={`sidebar-overlay ${sidebarOpen ? 'open' : ''}`} onClick={() => setSidebarOpen(false)} />
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
-          <img src="/logo.svg" alt="Nyapsys" className="sidebar-logo-img" />
+          <div className="sidebar-logo-text"><span className="logo-nya">nya</span><span className="logo-psys">psys</span></div>
           <button className="sidebar-close" onClick={() => setSidebarOpen(false)}>×</button>
         </div>
         <button className="sidebar-new-btn" onClick={startNewConversation}>New conversation</button>
@@ -60,7 +60,7 @@ export function ChatWindow() {
 
       <header className="topbar">
         <button className="topbar-hamburger" onClick={() => setSidebarOpen(true)}>☰</button>
-        <img src="/logo.svg" alt="Nyapsys" className="topbar-logo-img" />
+        <div className="topbar-logo-text"><span className="logo-nya">nya</span><span className="logo-psys">psys</span></div>
         <div className="status-pill"><span className="status-dot" /> Running locally</div>
       </header>
 
@@ -68,7 +68,7 @@ export function ChatWindow() {
         <div className="messages-container">
           {isEmpty ? (
             <div className="empty-state">
-              <img src="/logo.svg" alt="Nyapsys" className="empty-logo" />
+              <div className="empty-logo-text"><span className="logo-nya">nya</span><span className="logo-psys">psys</span></div>
               <h2 className="empty-title">What can I help with?</h2>
               <p className="empty-subtitle">Ask anything, upload a file, or share an image. Nyapsys runs entirely on your Mac.</p>
               <div className="empty-pills">

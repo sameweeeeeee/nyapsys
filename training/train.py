@@ -460,8 +460,14 @@ def main():
 
             if optim_step % 100 == 0:
                 actual_loss = loss.item() * args.gradient_accumulation_steps
-                pbar.set_postfix({"loss": f"{actual_loss:.4f}"})
-                tqdm.write(f"[Step {optim_step}] loss={actual_loss:.4f} | {log_router_stats(router_logits[-1])}")
+                expert_str = log_router_stats(router_logits[-1])
+                pbar.set_postfix({"loss": f"{actual_loss:.4f}", "experts": expert_str})
+                tqdm.write(f"[Step {optim_step}] loss={actual_loss:.4f} | {expert_str}")
+                try:
+                    with open("/tmp/expert_stats.json", "w") as ef:
+                        ef.write(json.dumps({"step": optim_step, "expert_str": expert_str}) + "\n")
+                except Exception:
+                    pass
 
             if optim_step % 2000 == 0 and not args.smoke_test:
                 ckpt_dir = args.output_dir if not args.output_dir.startswith("gs://") else "./checkpoints"

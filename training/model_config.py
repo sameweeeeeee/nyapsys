@@ -40,7 +40,7 @@ CONFIG_2B_MOE = {
 
 CONFIG_3B_MOE = {
     "vocab_size": 32000,
-    "num_hidden_layers": 24,
+    "num_hidden_layers": 18,
     "hidden_size": 2048,
     "num_attention_heads": 16,
     "num_key_value_heads": 8,
@@ -52,7 +52,7 @@ CONFIG_3B_MOE = {
     "expert_intermediate_size": 4096,
     "router_aux_loss_coef": 0.03,
 }
-# Total params: ~2.1B. Active per token: ~1.1B. VRAM during training: ~13–15GB.
+# Total params: ~1.59B. Active per token: ~795M. VRAM during training: ~10–12GB.
 
 CONFIG_3B_MOE_SMOKE = {
     "vocab_size": 32000,

@@ -18,7 +18,7 @@ if ! gcloud auth print-access-token > /dev/null 2>&1; then
 fi
 
 echo "Downloading..."
-gsutil -o GSUtil:parallel_composite_upload_threshold=150M cp "$GCS_PATH" "$DEST"
+gsutil -m cp "$GCS_PATH" "$DEST"
 
 FILE_SIZE=$(stat -f%z "$DEST" 2>/dev/null || stat -c%s "$DEST")
 if [ "$FILE_SIZE" -lt 1000000000 ]; then

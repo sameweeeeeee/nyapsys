@@ -71,6 +71,8 @@ async def call_tool(name: str, args: dict) -> str:
             return f"Web search error: {e}"
 
     if name == "run_python":
+        if os.getenv("ALLOW_CODE_EXECUTION", "").lower() not in ("true", "1", "yes"):
+            return "Error: Code execution is disabled. Set ALLOW_CODE_EXECUTION=true in .env to enable."
         timeout = int(os.getenv("TOOL_TIMEOUT_SECONDS", "10"))
         with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:
             f.write(args["code"])
@@ -88,10 +90,10 @@ async def call_tool(name: str, args: dict) -> str:
             return f"Error: Python execution timed out after {timeout}s"
 
     if name == "read_local_file":
-        path = args["path"]
-        allowed = [os.path.expanduser("~"), "/volumes"]
+        path = os.path.realpath(args["path"])
+        allowed = [os.path.realpath(os.path.expanduser("~"))]
         if not any(path.startswith(a) for a in allowed):
-            return "Access denied: path outside allowed directories"
+            return f"Access denied: path outside home directory ({allowed[0]})"
         try:
             with open(path) as f:
                 return f.read(4000)

@@ -71,12 +71,14 @@ async def ingest_file(file_bytes: bytes, filename: str, file_type: str, conversa
         ids = [f"{file_id}_chunk_{i}" for i in range(len(chunks))]
         metadatas = [{"file_id": file_id, "filename": filename, "file_type": file_type, "chunk_index": i,
                       "total_chunks": len(chunks), "conversation_id": conversation_id, "created_at": created_at} for i in range(len(chunks))]
-        rag.embed_and_upsert(chunks, metadatas, ids)
+        try:
+            rag.embed_and_upsert(chunks, metadatas, ids)
+        except RuntimeError as e:
+            print(f"[ingest] RAG unavailable, skipping embedding: {e}")
     else:
         ids = []
 
     await db.insert_file(file_id, conversation_id, filename, file_type, len(file_bytes), len(chunks), ids)
-    rag.unload_embedder()
     return IngestResult(file_id, len(chunks), filename)
 
 

@@ -19,6 +19,8 @@
   --radius-xs:      8px;
 }
 
+::selection { background: var(--accent); color: white; }
+
 body {
   font-family: 'DM Sans', sans-serif;
   background: var(--bg-primary);
@@ -54,9 +56,11 @@ body {
 }
 .topbar-hamburger:hover { background: var(--bg-secondary); }
 
-.topbar-logo-img { height: 36px; width: auto; }
-.sidebar-logo-img { height: 32px; width: auto; }
-.empty-logo { width: 120px; height: auto; margin-bottom: 8px; }
+.topbar-logo-text { font-family: 'Instrument Serif', serif; font-size: 24px; margin-left: 10px; cursor: default; }
+.logo-nya { color: var(--text-primary); }
+.logo-psys { color: var(--accent); font-style: italic; }
+.sidebar-logo-text { font-family: 'Instrument Serif', serif; font-size: 22px; cursor: default; }
+.empty-logo-text { font-family: 'Instrument Serif', serif; font-size: 48px; margin-bottom: 8px; }
 
 .status-pill {
   margin-left: auto; display: flex; align-items: center; gap: 6px;
@@ -80,7 +84,6 @@ body {
 .sidebar.open { transform: translateX(0); }
 
 .sidebar-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
-.sidebar-logo-img { height: 32px; width: auto; }
 .sidebar-close { width: 32px; height: 32px; border: none; background: transparent; cursor: pointer; font-size: 18px; color: var(--text-secondary); border-radius: var(--radius-xs); }
 .sidebar-close:hover { background: var(--bg-tertiary); }
 
@@ -182,7 +185,7 @@ body {
 
 @media (max-width: 375px) {
   .topbar { padding: 0 12px; }
-  .topbar-logo-text { font-size: 18px; margin-left: 8px; }
+  .topbar-logo-text { font-size: 18px; }
   .status-pill { display: none; }
   .messages-area { padding: 24px 12px 100px; }
   .message-bubble { max-width: 90%; padding: 12px 14px; font-size: 14px; }

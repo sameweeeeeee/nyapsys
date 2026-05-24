@@ -14,7 +14,7 @@ interface MessageBubbleProps {
 export function MessageBubble({ role, content, isStreaming }: MessageBubbleProps) {
   const isUser = role === 'user'
   return (
-    <div className={`message message-${role}`}>
+    <>
       <div className="message-avatar">{isUser ? '👤' : <span className="avatar-n">N</span>}</div>
       <div className="message-bubble">
         <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
@@ -26,6 +26,6 @@ export function MessageBubble({ role, content, isStreaming }: MessageBubbleProps
         }}>{content}</ReactMarkdown>
         {isStreaming && <span className="streaming-cursor">▊</span>}
       </div>
-    </div>
+    </>
   )
 }

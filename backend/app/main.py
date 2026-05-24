@@ -93,7 +93,7 @@ async def v1_chat_completions(req: ChatCompletionRequest):
     if req.stream:
         async def event_stream():
             full_response = ""
-            async for token in agent._stream_from_model(messages, max_tokens=max_tokens, temperature=temperature):
+            async for token in agent.stream_from_model(messages, max_tokens=max_tokens, temperature=temperature):
                 full_response += token
                 yield f"data: {json.dumps({'choices': [{'delta': {'content': token}}]})}\n\n"
             yield f"data: {json.dumps({'choices': [{'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
@@ -101,7 +101,7 @@ async def v1_chat_completions(req: ChatCompletionRequest):
         return StreamingResponse(event_stream(), media_type="text/event-stream")
     else:
         content = ""
-        async for token in agent._stream_from_model(messages, max_tokens=max_tokens, temperature=temperature):
+        async for token in agent.stream_from_model(messages, max_tokens=max_tokens, temperature=temperature):
             content += token
         return JSONResponse({"model": req.model, "choices": [{"message": {"role": "assistant", "content": content}, "finish_reason": "stop"}]})
 
@@ -167,7 +167,7 @@ import shlex
 async def get_training_logs(lines: int = 500):
     import asyncio
     ssh_cmd = shlex.split(
-        'gcloud compute ssh nyapsys-spot --zone=us-central1-a --tunnel-through-iap'
+        'gcloud compute ssh nyapsys-training --zone=us-east1-d --tunnel-through-iap'
         f' --command="tail -{lines} /tmp/train.log"'
         ' -- -o ConnectTimeout=10 -o ServerAliveInterval=5'
     )

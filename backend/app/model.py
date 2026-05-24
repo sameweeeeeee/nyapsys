@@ -67,8 +67,14 @@ async def generate(messages: list[dict], max_tokens: int = N_PREDICT, temperatur
                                 yield content
                         except Exception:
                             continue
-        except httpx.ReadTimeout:
+        except httpx.TimeoutException:
             yield "\n\n[Error: Request timed out.]"
+        except httpx.HTTPStatusError as e:
+            yield f"\n\n[Error: llama.cpp returned {e.response.status_code}]"
+        except httpx.ConnectError:
+            yield "\n\n[Error: Cannot connect to llama.cpp. Is it running?]"
+        except httpx.HTTPError as e:
+            yield f"\n\n[Error: Model request failed: {e}]"
 
 
 async def generate_with_image(text: str, image_b64: str, media_type: str = "image/jpeg", max_tokens: int = N_PREDICT, temperature: float = TEMPERATURE) -> AsyncGenerator[str, None]:
@@ -92,5 +98,11 @@ async def generate_with_image(text: str, image_b64: str, media_type: str = "imag
                                 yield content
                         except json.JSONDecodeError:
                             continue
-        except httpx.ReadTimeout:
+        except httpx.TimeoutException:
             yield "\n\n[Error: Request timed out.]"
+        except httpx.HTTPStatusError as e:
+            yield f"\n\n[Error: llama.cpp returned {e.response.status_code}]"
+        except httpx.ConnectError:
+            yield "\n\n[Error: Cannot connect to llama.cpp. Is it running?]"
+        except httpx.HTTPError as e:
+            yield f"\n\n[Error: Model request failed: {e}]"

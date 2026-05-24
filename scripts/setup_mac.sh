@@ -17,7 +17,13 @@ bash "$PROJECT_DIR/scripts/download_model.sh"
 brew install cloudflared
 bash "$PROJECT_DIR/scripts/setup_tunnel.sh"
 
+if [ ! -f "$PROJECT_DIR/.env" ]; then
+  cp "$PROJECT_DIR/.env.example" "$PROJECT_DIR/.env"
+  echo "Created .env from .env.example — edit it with your values"
+fi
+
 cp "$PROJECT_DIR/scripts/com.nyapsys.backend.plist" ~/Library/LaunchAgents/
+sed -i '' "s/YOUR_USERNAME/$(whoami)/g" ~/Library/LaunchAgents/com.nyapsys.backend.plist
 launchctl load ~/Library/LaunchAgents/com.nyapsys.backend.plist
 
 echo "=== Setup complete ==="
