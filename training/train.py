@@ -469,7 +469,7 @@ def main():
                 except Exception:
                     pass
 
-            if optim_step % 2000 == 0 and not args.smoke_test:
+            if optim_step % 1000 == 0 and not args.smoke_test:
                 ckpt_dir = args.output_dir if not args.output_dir.startswith("gs://") else "./checkpoints"
                 os.makedirs(ckpt_dir, exist_ok=True)
                 ckpt_path = os.path.join(ckpt_dir, f"step-{optim_step}.pt")
