@@ -17,7 +17,8 @@ llama-server \
   --parallel 2 \
   --flash-attn \
   --mlock \
-  --cont-batching &
+  --cont-batching \
+  --repeat-penalty 1.1 &
 
 LLAMA_PID=$!
 echo "Waiting for llama-server..."

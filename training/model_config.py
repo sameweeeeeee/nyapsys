@@ -44,7 +44,7 @@ CONFIG_3B_MOE = {
     "hidden_size": 2048,
     "num_attention_heads": 16,
     "num_key_value_heads": 8,
-    "max_position_embeddings": 1024,
+    "max_position_embeddings": 2048,
     "rms_norm_eps": 1e-5,
     "rope_theta": 10000.0,
     "num_experts": 4,
